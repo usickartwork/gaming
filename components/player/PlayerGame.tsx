@@ -157,14 +157,19 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_state, game.room_code, game.current_song_id])
 
-  // Reset local state when host enables buzz again
+  // Reset local state when host enables buzz, advances song, or disables
   useEffect(() => {
-    if (game.buzz_state === 'READY' && game.buzz_winner_id === null) {
+    if (
+      game.buzz_winner_id === null ||
+      game.buzz_state === 'DISABLED' ||
+      game.buzz_state === 'READY' ||
+      game.buzz_state === 'RESULT'
+    ) {
       setLocalWinner(null)
       setLocalWinnerName(null)
       setIsBuzzing(false)
     }
-  }, [game.buzz_state, game.buzz_winner_id])
+  }, [game.buzz_state, game.buzz_winner_id, game.current_song_id])
 
   // Sync local winner state immediately when buzz_winner_id arrives from DB
   useEffect(() => {
@@ -479,7 +484,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   }
 
   // ── LOCKED: Someone else won ────────────────────────────────────
-  if ((localWinner === false || game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
+  if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         {renderFeedbackOverlay()}
