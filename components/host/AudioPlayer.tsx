@@ -264,21 +264,67 @@ export function AudioPlayer({
     stopAudio()
   }, [audioUrl, songId, calcRandomStart, stopAudio])
 
-  // 6. Auto-stop audio when player buzzes in or answer is judged
+  // 6. Auto-stop audio when player buzzes in
   useEffect(() => {
-    if (buzzState === 'LOCKED' || buzzState === 'ANSWERING' || buzzState === 'RESULT') {
+    if (buzzState === 'LOCKED' || buzzState === 'ANSWERING') {
       stopAudio()
     }
   }, [buzzState, stopAudio])
 
-  // 7. Cleanup audio playback on component unmount
+  // 7. Auto-resume song when answer is CORRECT (buzzState === RESULT)
+  useEffect(() => {
+    if (buzzState === 'RESULT') {
+      setIsFullPlay(true)
+
+      const timer = setTimeout(() => {
+        if (isSpotifyTrack) {
+          spotifyPlayerRef.current
+            ?.resume()
+            .then(() => setPlaying(true))
+            .catch(async (err) => {
+              console.error('Spotify resume error:', err)
+              try {
+                const token = spotifyToken || (await fetchSpotifyToken())
+                if (token && spotifyDeviceId) {
+                  await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${spotifyDeviceId}`, {
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: `Bearer ${token}`,
+                    },
+                  })
+                  setPlaying(true)
+                }
+              } catch (e) {
+                // ignore
+              }
+            })
+        } else if (audioRef.current) {
+          if (audioRef.current.currentTime === 0 && randomStart > 0) {
+            audioRef.current.currentTime = randomStart
+            setCurrentTime(randomStart)
+          }
+          const playPromise = audioRef.current.play()
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => setPlaying(true))
+              .catch((err) => console.log('Autoplay error:', err))
+          }
+        }
+      }, 1300)
+
+      return () => clearTimeout(timer)
+    }
+  }, [buzzState, isSpotifyTrack, randomStart, spotifyToken, spotifyDeviceId, fetchSpotifyToken])
+
+  // 8. Cleanup audio playback on component unmount
   useEffect(() => {
     return () => {
       stopAudio()
     }
   }, [stopAudio])
 
-  // 8. Playback controls
+  // 9. Playback controls
   const handlePlay = async () => {
     if (buzzState === 'RESULT') {
       setIsFullPlay(true)
@@ -457,14 +503,14 @@ export function AudioPlayer({
       )}
 
       {/* Mode Banner: Song Resumes on Correct or Random Start indicator */}
-      {buzzState === 'RESULT' ? (
+      {isFullPlay && buzzState === 'RESULT' ? (
         <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold relative z-10 shadow-lg shadow-emerald-500/10">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>Jawaban Benar! Audio Dihentikan (Klik &apos;Putar Lagu&apos; jika ingin mendengar lagu penuh)</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Jawaban Benar! Melanjutkan Lagu Sampai Selesai</span>
           </div>
           <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 bg-emerald-400/20 px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-            SELESAI
+            LANJUT MEMUTAR
           </span>
         </div>
       ) : (
