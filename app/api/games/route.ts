@@ -21,6 +21,36 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseServerClient()
     const hashedSecret = await bcrypt.hash(hostPassword, 10)
 
+    // Load master playlists to inherit into the new room
+    let initialGameName = name.trim()
+    try {
+      const { data: masterData } = await supabase
+        .from('games')
+        .select('name')
+        .eq('room_code', '__ADMIN_PLAYLISTS__')
+        .maybeSingle()
+
+      if (masterData?.name && masterData.name.includes('|||')) {
+        const parsed = JSON.parse(masterData.name.split('|||')[1])
+        if (parsed?.playlists && Array.isArray(parsed.playlists) && parsed.playlists.length > 0) {
+          const initialTS = {
+            mode: 'CLASSIC',
+            phase: 'GROUP_A',
+            groupAPlayerIds: [],
+            groupBPlayerIds: [],
+            matches: [],
+            activeMatchId: null,
+            targetPoints: 2,
+            championId: null,
+            playlists: parsed.playlists,
+          }
+          initialGameName = `${name.trim()}|||${JSON.stringify(initialTS)}`
+        }
+      }
+    } catch (e) {
+      console.warn('Could not inherit master playlists:', e)
+    }
+
     // Generate unique room code (retry on collision)
     let roomCode = ''
     let game = null
@@ -32,7 +62,7 @@ export async function POST(req: NextRequest) {
         .from('games')
         .insert({
           room_code: roomCode,
-          name: name.trim(),
+          name: initialGameName,
           host_secret: hashedSecret,
           status: 'LOBBY',
           buzz_state: 'DISABLED',

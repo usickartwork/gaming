@@ -127,9 +127,12 @@ export function SongSelector({
           <h3 className="text-white font-black text-base flex items-center gap-2">
             <ListIcon size={19} className="text-emerald-400" />
             <span>Playlist &amp; Kategori Lagu</span>
+            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold tracking-wide">
+              Tersimpan Permanen ☁️
+            </span>
           </h3>
           <p className="text-slate-400 text-xs mt-0.5">
-            Buat beberapa section / playlist untuk babak permainan
+            Playlist dan lagu Anda tersimpan permanen di cloud admin &amp; otomatis terbawa ke room baru
           </p>
         </div>
 

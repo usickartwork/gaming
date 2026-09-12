@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useGameState, broadcastFastBuzz } from '@/lib/hooks/useGameState'
+import { useGameState } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
 import {
@@ -88,16 +88,85 @@ export function HostDashboard({
     [game.room_code, hostSession.hostPassword]
   )
 
-  // Playlist Sections State
+  // Playlist Sections State (Permanent across rooms and sessions)
   const [playlists, setPlaylists] = useState<PlaylistSection[]>(tournamentState?.playlists || [])
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null)
 
-  // Sync playlists from tournamentState
+  // Central sync helper: Saves to current room, localStorage, and permanent Supabase cloud master
+  const persistPlaylists = useCallback(
+    async (updated: PlaylistSection[]) => {
+      setPlaylists(updated)
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('cg-admin-master-playlists', JSON.stringify(updated))
+        } catch {}
+      }
+      // 1. Sync to active room
+      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+      // 2. Sync to Supabase cloud master record (permanent across all games/rooms)
+      try {
+        await fetch('/api/admin/master-playlists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playlists: updated }),
+        })
+      } catch (err) {
+        console.error('Failed to sync master playlists to cloud:', err)
+      }
+    },
+    [hostAction]
+  )
+
+  // Sync playlists from tournamentState if present
   useEffect(() => {
-    if (tournamentState?.playlists) {
+    if (tournamentState?.playlists && tournamentState.playlists.length > 0) {
       setPlaylists(tournamentState.playlists)
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('cg-admin-master-playlists', JSON.stringify(tournamentState.playlists))
+        } catch {}
+      }
     }
   }, [tournamentState?.playlists])
+
+  // If current room has no playlists, automatically load from master playlists (cloud & localStorage)
+  useEffect(() => {
+    const initMasterPlaylists = async () => {
+      if ((!tournamentState?.playlists || tournamentState.playlists.length === 0) && playlists.length === 0) {
+        // 1. Instant check from localStorage
+        if (typeof window !== 'undefined') {
+          try {
+            const cached = localStorage.getItem('cg-admin-master-playlists')
+            if (cached) {
+              const parsed = JSON.parse(cached)
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setPlaylists(parsed)
+                await hostAction('UPDATE_PLAYLISTS', { playlists: parsed })
+              }
+            }
+          } catch {}
+        }
+
+        // 2. Fetch master playlists from Supabase cloud
+        try {
+          const res = await fetch('/api/admin/master-playlists')
+          const data = await res.json()
+          if (data.playlists && Array.isArray(data.playlists) && data.playlists.length > 0) {
+            setPlaylists(data.playlists)
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem('cg-admin-master-playlists', JSON.stringify(data.playlists))
+              } catch {}
+            }
+            await hostAction('UPDATE_PLAYLISTS', { playlists: data.playlists })
+          }
+        } catch (err) {
+          console.error('Error loading master playlists:', err)
+        }
+      }
+    }
+    initMasterPlaylists()
+  }, []) // run once on mount
 
   const handleOpenSpotifySearch = (query?: string) => {
     setSpotifyInitialQuery(query || '')
@@ -112,30 +181,27 @@ export function HostDashboard({
         songIds: [],
       }
       const updated = [...playlists, newPl]
-      setPlaylists(updated)
       setActivePlaylistId(newPl.id)
-      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+      await persistPlaylists(updated)
     },
-    [playlists, hostAction]
+    [playlists, persistPlaylists]
   )
 
   const handleDeletePlaylist = useCallback(
     async (playlistId: string) => {
       const updated = playlists.filter((p) => p.id !== playlistId)
-      setPlaylists(updated)
       if (activePlaylistId === playlistId) setActivePlaylistId(null)
-      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+      await persistPlaylists(updated)
     },
-    [playlists, activePlaylistId, hostAction]
+    [playlists, activePlaylistId, persistPlaylists]
   )
 
   const handleRenamePlaylist = useCallback(
     async (playlistId: string, newName: string) => {
       const updated = playlists.map((p) => (p.id === playlistId ? { ...p, name: newName } : p))
-      setPlaylists(updated)
-      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+      await persistPlaylists(updated)
     },
-    [playlists, hostAction]
+    [playlists, persistPlaylists]
   )
 
   const handleRemoveSongFromPlaylist = useCallback(
@@ -143,10 +209,9 @@ export function HostDashboard({
       const updated = playlists.map((p) =>
         p.id === playlistId ? { ...p, songIds: p.songIds.filter((id) => id !== songId) } : p
       )
-      setPlaylists(updated)
-      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+      await persistPlaylists(updated)
     },
-    [playlists, hostAction]
+    [playlists, persistPlaylists]
   )
 
   // Keep songList updated with prop
@@ -213,8 +278,7 @@ export function HostDashboard({
               ? { ...p, songIds: [...new Set([...p.songIds, data.songId])] }
               : p
           )
-          setPlaylists(updated)
-          await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+          await persistPlaylists(updated)
         }
       }
     } catch (err) {
@@ -267,8 +331,7 @@ export function HostDashboard({
               ? { ...p, songIds: [...new Set([...p.songIds, data.songId])] }
               : p
           )
-          setPlaylists(updated)
-          await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+          await persistPlaylists(updated)
         }
       }
     } catch (err) {
@@ -293,8 +356,7 @@ export function HostDashboard({
           ...p,
           songIds: p.songIds.filter((id) => id !== songId),
         }))
-        setPlaylists(updated)
-        await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+        await persistPlaylists(updated)
       }
     } catch (err) {
       console.error('Failed to delete song:', err)
@@ -725,18 +787,9 @@ export function HostDashboard({
             buzzState={game.buzz_state}
             buzzWinner={buzzWinner}
             currentAttempt={game.current_attempt}
-            onEnableBuzz={() => {
-              broadcastFastBuzz(game.id, { type: 'BUZZ_STATE', buzzState: 'READY', winnerId: null })
-              hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })
-            }}
-            onDisableBuzz={() => {
-              broadcastFastBuzz(game.id, { type: 'BUZZ_STATE', buzzState: 'DISABLED', winnerId: null })
-              hostAction('SET_BUZZ_STATE', { buzzState: 'DISABLED' })
-            }}
-            onResetBuzz={() => {
-              broadcastFastBuzz(game.id, { type: 'BUZZ_STATE', buzzState: 'READY', winnerId: null })
-              hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })
-            }}
+            onEnableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
+            onDisableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'DISABLED' })}
+            onResetBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
             onCorrect={() => answerAction('CORRECT')}
             onWrong={() => answerAction('WRONG')}
             isLoading={isLoading}

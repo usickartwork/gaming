@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { useGameState, broadcastFastBuzz } from '@/lib/hooks/useGameState'
+import { useGameState } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { usePresence } from '@/lib/hooks/usePresence'
 import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
@@ -57,34 +57,53 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const lastWinnerPlayerRef = useRef<string | null>(null)
   const serverOffsetRef = useRef<number>(0)
 
-  // Calibrate client-server clock offset with multi-sample NTP to eliminate ping latency advantages
+  // Calibrate client-server clock offset to eliminate network latency advantage on buzzes
   useEffect(() => {
     const syncClock = async () => {
       try {
-        const pingOnce = async () => {
-          const t0 = performance.now()
-          const res = await fetch('/api/games/ping', { cache: 'no-store' })
-          const data = await res.json()
-          const rtt = performance.now() - t0
-          const offset = data.serverTime - (Date.now() - Math.round(rtt / 2))
-          return { rtt, offset }
-        }
-        const s1 = await pingOnce()
-        const s2 = await pingOnce()
-        // Pick the sample with the lowest RTT (least network queue jitter)
-        const best = s1.rtt <= s2.rtt ? s1 : s2
-        serverOffsetRef.current = best.offset
+        const t0 = performance.now()
+        const res = await fetch('/api/games/ping', { cache: 'no-store' })
+        const data = await res.json()
+        const t1 = performance.now()
+        const rtt = t1 - t0
+        serverOffsetRef.current = data.serverTime - (Date.now() - Math.round(rtt / 2))
       } catch {
         // graceful ignore
       }
     }
     syncClock()
-    const interval = setInterval(syncClock, 20000)
+    const interval = setInterval(syncClock, 25000)
     return () => clearInterval(interval)
   }, [])
 
+  // Player readiness state
+  const readyPlayerIds = tournamentState?.readyPlayerIds || []
+  const isMeReady = readyPlayerIds.includes(session.playerId)
+  const readyCount = readyPlayerIds.length
+  const totalPlayers = players.length
+  const [isTogglingReady, setIsTogglingReady] = useState(false)
+
   const countdownEndTime = tournamentState?.countdownEndTime ?? null
   const isCountingDown = typeof countdownEndTime === 'number' && countdownEndTime > Date.now()
+
+  const handleToggleReady = async () => {
+    if (isTogglingReady) return
+    setIsTogglingReady(true)
+    try {
+      await fetch(`/api/games/${game.room_code}/ready`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-token': session.sessionToken,
+        },
+        body: JSON.stringify({ playerId: session.playerId, ready: !isMeReady }),
+      })
+    } catch (err) {
+      console.error('Toggle ready error:', err)
+    } finally {
+      setIsTogglingReady(false)
+    }
+  }
 
   // Track who was the active buzzing player before evaluate
   useEffect(() => {
@@ -138,18 +157,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_state, game.room_code, game.current_song_id])
 
-  // Reset local state when host enables buzz, advances song, or disables
+  // Reset local state when host enables buzz again
   useEffect(() => {
-    if (
-      game.buzz_winner_id === null ||
-      game.buzz_state === 'DISABLED' ||
-      game.buzz_state === 'READY'
-    ) {
+    if (game.buzz_state === 'READY' && game.buzz_winner_id === null) {
       setLocalWinner(null)
       setLocalWinnerName(null)
       setIsBuzzing(false)
     }
-  }, [game.buzz_state, game.buzz_winner_id, game.current_song_id])
+  }, [game.buzz_state, game.buzz_winner_id])
 
   // Sync local winner state immediately when buzz_winner_id arrives from DB
   useEffect(() => {
@@ -164,16 +179,6 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_winner_id, session.playerId, players])
 
-  // Auto logout and redirect when game ends / room deleted by host
-  useEffect(() => {
-    if (game.status === 'FINAL_RESULT') {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(`cg-session-${game.room_code}`)
-      }
-      router.push('/')
-    }
-  }, [game.status, game.room_code, router])
-
   // Track online presence
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
 
@@ -182,7 +187,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const isWinner =
     game.buzz_winner_id === session.playerId ||
     (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
-  const isExcluded = Boolean(me?.excluded_attempt !== null)
+  const isExcluded = me?.excluded_attempt === game.current_attempt
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
   // Tournament state helpers
@@ -200,8 +205,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const inGroupB = Boolean(groupBIds.includes(session.playerId))
   const myGroup = inGroupA ? 'A' : inGroupB ? 'B' : null
 
-  const tsMatches = tournamentState?.matches || []
-  const activeMatch = tsMatches.find((m) => m.id === tournamentState?.activeMatchId)
+  const activeMatch = tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)
   const isDuelist = Boolean(
     gameMode === 'KNOCKOUT' &&
     phase === 'KNOCKOUT' &&
@@ -225,10 +229,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const isEliminated = Boolean(
     gameMode === 'KNOCKOUT' &&
     phase === 'KNOCKOUT' &&
-    (!tsMatches.some(
+    (!tournamentState?.matches.some(
       (m) => m.player1Id === session.playerId || m.player2Id === session.playerId
     ) ||
-      tsMatches.some(
+      tournamentState?.matches.some(
         (m) =>
           m.status === 'FINISHED' &&
           (m.player1Id === session.playerId || m.player2Id === session.playerId) &&
@@ -238,12 +242,12 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   const isQualifiedToKnockout = Boolean(
     gameMode === 'KNOCKOUT' &&
-    tsMatches.some(
+    tournamentState?.matches.some(
       (m) => m.player1Id === session.playerId || m.player2Id === session.playerId
     )
   )
 
-  const upcomingMatch = tsMatches.find(
+  const upcomingMatch = tournamentState?.matches.find(
     (m) =>
       m.status === 'UPCOMING' &&
       (m.player1Id === session.playerId || m.player2Id === session.playerId)
@@ -255,14 +259,6 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
     // Calculate calibrated press timestamp to eliminate latency discrepancies
     const pressedAt = Date.now() + (serverOffsetRef.current || 0)
-
-    // 1. Instantly signal host & room via WebSocket broadcast (<30ms)
-    broadcastFastBuzz(game.id, {
-      type: 'BUZZ_CLAIM',
-      winnerId: session.playerId,
-      winnerName: session.playerName,
-      pressedAt,
-    })
 
     try {
       const res = await fetch(`/api/admin/${game.room_code}/buzz`, {
@@ -385,127 +381,48 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     )
   }
 
-  // ── FINAL_RESULT state (Game ended / room deleted by host) ───────
-  // Auto-logged out via useEffect and redirected to login page
+  // ── FINAL_RESULT state (Game ended / room deleted) ─────────────
   if (game.status === 'FINAL_RESULT') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-950 select-none">
-        <div className="w-12 h-12 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin mb-4 mx-auto" />
-        <p className="text-white font-black text-lg">Permainan Telah Selesai</p>
-        <p className="text-slate-400 text-xs mt-1">Host telah mengakhiri sesi. Mengalihkan ke halaman utama...</p>
-      </div>
-    )
-  }
+      <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
+        <div className="absolute inset-0 bg-amber-500/10 blur-[120px] pointer-events-none" />
 
-  // ── GAME FINISHED / ROUND_COMPLETE / TOURNAMENT CHAMPION ──────────
-  const isTournamentChampion = gameMode === 'KNOCKOUT' && Boolean(tournamentState?.championId)
-  const isGameCompleted = game.status === 'ROUND_COMPLETE' || isTournamentChampion
-
-  if (isGameCompleted) {
-    const championPlayer = tournamentState?.championId
-      ? players.find((p) => p.id === tournamentState.championId)
-      : null
-    const sorted = [...players].sort((a, b) => b.score - a.score)
-    const grandWinner = championPlayer || sorted[0]
-    const isMeWinner = grandWinner?.id === session.playerId
-    const myRank = sorted.findIndex((p) => p.id === session.playerId) + 1
-
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-start p-4 sm:p-6 text-center relative overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 select-none">
-        {/* Radiant golden backdrop glow */}
-        <div className="fixed inset-0 bg-amber-500/15 blur-[140px] pointer-events-none" />
-
-        <TournamentBracketModal
-          isOpen={showBracketModal}
-          onClose={() => setShowBracketModal(false)}
-          tournamentState={tournamentState}
-          players={players}
-          currentPlayerId={session.playerId}
-        />
-
-        <div className="w-full max-w-md space-y-5 relative z-10 py-6 mx-auto">
-          {/* Top Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-black text-xs uppercase tracking-widest shadow-xl shadow-amber-500/30 animate-pulse">
-            <CrownIcon size={16} />
-            <span>{isTournamentChampion ? 'JUARA TURNAMEN 1v1 BO3' : 'PERMAINAN SELESAI'}</span>
+        <div className="w-full max-w-sm space-y-6 relative z-10 py-6">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-400/20 to-amber-600/10 border-2 border-amber-400/40 flex items-center justify-center text-amber-400 mx-auto shadow-2xl shadow-amber-500/30 animate-bounce">
+            <TrophyIcon size={40} />
           </div>
 
-          {/* Grand Winner Card */}
-          <div className="glass-panel rounded-3xl p-6 sm:p-7 border-2 border-amber-400/50 bg-gradient-to-b from-amber-950/40 via-slate-900/90 to-slate-900/90 shadow-2xl shadow-amber-950/60 space-y-4">
-            <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-amber-400/30 blur-xl animate-ping" />
-              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 flex items-center justify-center text-slate-950 shadow-2xl shadow-amber-400/50 transform hover:scale-105 transition-transform">
-                <TrophyIcon size={44} />
-              </div>
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-2 shadow-lg shadow-amber-400/30">
+              PERMAINAN SELESAI
             </div>
-
-            <div className="space-y-1">
-              <p className="text-amber-400 text-xs font-black uppercase tracking-widest">
-                👑 JUARA 1 • PEMENANG UTAMA
-              </p>
-              <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight drop-shadow-md">
-                {grandWinner?.name ?? 'Pemenang'}
-              </h1>
-              <p className="text-slate-300 text-xs sm:text-sm font-semibold">
-                {isTournamentChampion
-                  ? 'Pemenang Grand Final Turnamen BO3'
-                  : `Skor Tertinggi: ${grandWinner?.score ?? 0} Poin`}
-              </p>
-            </div>
-
-            {/* Personalized status banner */}
-            <div
-              className={`p-3.5 rounded-2xl border text-xs font-bold ${
-                isMeWinner
-                  ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300 shadow-lg shadow-emerald-500/10'
-                  : 'bg-white/5 border-white/10 text-slate-300'
-              }`}
-            >
-              {isMeWinner ? (
-                <div className="flex items-center justify-center gap-2 text-sm font-black">
-                  <span>🎉</span>
-                  <span>SELAMAT! KAMU ADALAH JUARA 1!</span>
-                  <span>🎉</span>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <span>Peringkat Kamu:</span>
-                  <span className="font-mono font-black text-amber-400 text-sm">
-                    #{myRank > 0 ? myRank : '-'} ({me?.score ?? 0} Poin)
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {gameMode === 'KNOCKOUT' && (
-              <button
-                type="button"
-                onClick={() => setShowBracketModal(true)}
-                className="w-full py-2.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95"
-              >
-                <SwordsIcon size={14} />
-                <span>Lihat Bagan Lengkap & Babak Grup</span>
-              </button>
-            )}
+            <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">
+              Terima Kasih Telah Bermain!
+            </h1>
+            <p className="text-slate-400 text-xs mt-1">
+              Host telah menyelesaikan sesi permainan ini.
+            </p>
           </div>
 
-          {/* Full Leaderboard */}
-          <div className="glass-panel rounded-3xl p-5 border border-white/10 shadow-2xl text-left space-y-3">
-            <div className="flex items-center justify-between border-b border-white/5 pb-2 px-1">
-              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">
-                Klasemen Akhir Seluruh Pemain
-              </span>
-              <span className="text-emerald-400 text-xs font-mono font-black">
-                {players.length} Pemain
-              </span>
-            </div>
+          {/* Final Standings */}
+          <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl text-left">
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2 text-center">
+              Klasemen Akhir
+            </p>
             <Leaderboard players={players} highlightId={session.playerId} />
           </div>
 
-          {/* Bottom Host Wait Notice */}
-          <p className="text-slate-500 text-xs">
-            Menunggu host melanjutkan ronde atau menyelesaikan permainan...
-          </p>
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem(`cg-session-${game.room_code}`)
+              }
+              router.push('/')
+            }}
+            className="w-full py-3.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm border border-white/10 transition-all active:scale-95 shadow-lg"
+          >
+            Kembali ke Beranda
+          </button>
         </div>
       </div>
     )
@@ -545,10 +462,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
           <div className="glass-panel rounded-3xl p-5 border border-emerald-500/30 shadow-xl">
             <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
-              {isDuelist ? 'Skor Duel 1v1 Kamu' : 'Skor Kamu Saat Ini'}
+              {gameMode === 'KNOCKOUT' ? 'Skor Duel 1v1 Kamu' : 'Skor Kamu Saat Ini'}
             </p>
             <p className="text-emerald-400 text-4xl font-black font-mono mt-1">
-              {isDuelist ? myDuelScore : me?.score ?? 0}{' '}
+              {gameMode === 'KNOCKOUT' ? myDuelScore : me?.score ?? 0}{' '}
               <span className="text-base text-slate-400 font-semibold">pts</span>
             </p>
           </div>
@@ -562,7 +479,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   }
 
   // ── LOCKED: Someone else won ────────────────────────────────────
-  if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
+  if ((localWinner === false || game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         {renderFeedbackOverlay()}
@@ -593,10 +510,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
           <div className="glass-panel rounded-3xl p-5 border border-white/5 shadow-xl">
             <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">
-              {isDuelist ? 'Skor Duel Kamu' : 'Skor Kamu'}
+              {gameMode === 'KNOCKOUT' ? 'Skor Duel Kamu' : 'Skor Kamu'}
             </p>
             <p className="text-white text-3xl font-black font-mono mt-1">
-              {isDuelist ? myDuelScore : me?.score ?? 0}{' '}
+              {gameMode === 'KNOCKOUT' ? myDuelScore : me?.score ?? 0}{' '}
               <span className="text-sm text-slate-500 font-semibold">pts</span>
             </p>
           </div>
@@ -723,10 +640,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-lg font-black text-slate-950 shadow-md shadow-amber-500/20 shrink-0">
-                {(session.playerName || 'P').charAt(0).toUpperCase()}
+                {session.playerName.charAt(0).toUpperCase()}
               </div>
               <div className="truncate">
-                <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName || 'Pemain'}</p>
+                <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm" />
                   <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
@@ -919,10 +836,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-black text-slate-950 shadow-md shrink-0 ${
               isDuelist ? 'bg-amber-400 shadow-amber-400/30' : 'bg-gradient-to-br from-emerald-400 to-teal-600 shadow-emerald-500/20'
             }`}>
-              {(session.playerName || 'P').charAt(0).toUpperCase()}
+              {session.playerName.charAt(0).toUpperCase()}
             </div>
             <div className="truncate">
-              <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName || 'Pemain'}</p>
+              <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${isDuelist ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 shadow-sm shadow-emerald-400'}`} />
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
@@ -998,16 +915,72 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         </div>
       </div>
 
-      {/* Center: Buzz Dome Button */}
-      <div className="my-auto py-8 flex items-center justify-center relative z-10">
-        <BuzzButton
-          buzzState={isCountingDown ? 'DISABLED' : game.buzz_state}
-          isWinner={isWinner}
-          onBuzz={handleBuzz}
-          isExcluded={isExcluded}
-          isBuzzing={isBuzzing}
-        />
-      </div>
+      {/* Center: Ready Check Card when buzzer is disabled, or Buzz Dome Button when active */}
+      {game.buzz_state === 'DISABLED' && !isCountingDown ? (
+        <div className="my-auto py-6 flex flex-col items-center justify-center relative z-10 max-w-sm mx-auto w-full space-y-4">
+          <div className="w-full glass-panel rounded-3xl p-5 sm:p-6 border border-white/10 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
+              <CheckIcon size={28} />
+            </div>
+
+            <div>
+              <h3 className="text-white font-black text-xl tracking-tight">Kesiapan Pemain</h3>
+              <p className="text-slate-400 text-xs mt-1">
+                Tandai bahwa kamu sudah siap sebelum host memutar lagu!
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-white/5">
+              <span className={`w-2.5 h-2.5 rounded-full ${isMeReady ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className="text-xs font-bold text-slate-300">
+                Pemain Siap: <strong className="text-emerald-400 font-mono font-black">{readyCount}</strong> / {totalPlayers}
+              </span>
+            </div>
+
+            {!isMeReady ? (
+              <button
+                type="button"
+                onClick={handleToggleReady}
+                disabled={isTogglingReady}
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500 hover:brightness-110 text-slate-950 font-black text-base shadow-xl shadow-emerald-500/30 border-2 border-white/40 flex items-center justify-center gap-2.5 transition-all active:scale-95 animate-pulse"
+              >
+                <CheckIcon size={20} />
+                <span>SAYA SIAP BERMAIN!</span>
+              </button>
+            ) : (
+              <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 space-y-2">
+                <div className="flex items-center justify-center gap-2 text-emerald-300 font-black text-sm uppercase tracking-wider">
+                  <CheckIcon size={18} />
+                  <span>Kamu Sudah Siap!</span>
+                </div>
+                <p className="text-slate-400 text-xs">
+                  {readyCount >= totalPlayers
+                    ? 'Semua pemain sudah siap! Host akan segera memutar lagu.'
+                    : `Menunggu pemain lain (${readyCount}/${totalPlayers} siap)...`}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleToggleReady}
+                  disabled={isTogglingReady}
+                  className="text-xs text-slate-400 hover:text-slate-200 underline font-semibold transition-colors pt-1"
+                >
+                  Batal Siap
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="my-auto py-8 flex items-center justify-center relative z-10">
+          <BuzzButton
+            buzzState={isCountingDown ? 'DISABLED' : game.buzz_state}
+            isWinner={isWinner}
+            onBuzz={handleBuzz}
+            isExcluded={isExcluded}
+            isBuzzing={isBuzzing}
+          />
+        </div>
+      )}
 
       {/* Bottom: Mini Podium Roster or Duel Opponent summary */}
       <div className="glass-panel rounded-3xl p-3.5 border border-white/10 relative z-10 space-y-2">
