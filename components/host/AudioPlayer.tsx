@@ -61,6 +61,7 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist, buzzState, songId
   }, [buzzState])
 
   // Auto-resume song from the current/random position onwards when answer is CORRECT (buzzState === RESULT)
+  // Delayed by 1300ms so player animation and triumphant fanfare can play first without clash or spoilers
   useEffect(() => {
     if (buzzState === 'RESULT') {
       setIsFullPlay(true)
@@ -70,12 +71,18 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist, buzzState, songId
           audioRef.current.currentTime = randomStart
           setCurrentTime(randomStart)
         }
-        const playPromise = audioRef.current.play()
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => setPlaying(true))
-            .catch((err) => console.log('Autoplay error:', err))
-        }
+        const timer = setTimeout(() => {
+          if (audioRef.current) {
+            const playPromise = audioRef.current.play()
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => setPlaying(true))
+                .catch((err) => console.log('Autoplay error:', err))
+            }
+          }
+        }, 1300)
+
+        return () => clearTimeout(timer)
       }
     }
   }, [buzzState, randomStart])

@@ -106,18 +106,49 @@ export function HostDashboard({
     }
   }
 
-  const answerAction = useCallback(
-    async (result: 'CORRECT' | 'WRONG') => {
-      setIsLoading(true)
-      if (result === 'CORRECT') {
+  // Track previous buzz state and attempt to detect answer evaluations in real-time
+  const prevBuzzStateRef = useRef(game.buzz_state)
+  const prevAttemptRef = useRef(game.current_attempt)
+
+  // Synchronized sound & visual feedback on Host
+  // Triggers ONLY after real-time update arrives from server and gives player screen a slight head-start (350ms)
+  // so the player's phone animation has already appeared, completely eliminating audio spoilers.
+  useEffect(() => {
+    // When answer is evaluated as CORRECT (game transitions to RESULT)
+    if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
+      const t = setTimeout(() => {
         playCorrectFanfareSound()
         setFeedbackAnim('correct')
         setTimeout(() => setFeedbackAnim('none'), 2000)
-      } else {
+      }, 350)
+      prevBuzzStateRef.current = game.buzz_state
+      prevAttemptRef.current = game.current_attempt
+      return () => clearTimeout(t)
+    }
+
+    // When answer is evaluated as WRONG (attempt increments and state returns to READY)
+    if (
+      game.buzz_state === 'READY' &&
+      (prevBuzzStateRef.current === 'LOCKED' || prevBuzzStateRef.current === 'ANSWERING') &&
+      game.current_attempt > prevAttemptRef.current
+    ) {
+      const t = setTimeout(() => {
         playWrongSound()
         setFeedbackAnim('wrong')
         setTimeout(() => setFeedbackAnim('none'), 1200)
-      }
+      }, 350)
+      prevBuzzStateRef.current = game.buzz_state
+      prevAttemptRef.current = game.current_attempt
+      return () => clearTimeout(t)
+    }
+
+    prevBuzzStateRef.current = game.buzz_state
+    prevAttemptRef.current = game.current_attempt
+  }, [game.buzz_state, game.current_attempt])
+
+  const answerAction = useCallback(
+    async (result: 'CORRECT' | 'WRONG') => {
+      setIsLoading(true)
       try {
         await fetch(`/api/admin/${game.room_code}/answer`, {
           method: 'POST',
