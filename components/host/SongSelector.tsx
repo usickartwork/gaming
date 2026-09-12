@@ -10,6 +10,7 @@ interface SongSelectorProps {
   currentRound: RoundType
   onSelectSong: (song: Song) => void
   onChangeRound: (round: RoundType) => void
+  onOpenSpotifySearch?: () => void
 }
 
 const DIFFICULTY_COLORS = {
@@ -24,6 +25,7 @@ export function SongSelector({
   currentRound,
   onSelectSong,
   onChangeRound,
+  onOpenSpotifySearch,
 }: SongSelectorProps) {
   const [search, setSearch] = useState('')
 
@@ -36,14 +38,29 @@ export function SongSelector({
 
   return (
     <div className="glass-panel rounded-3xl p-5 border border-white/10 space-y-4 shadow-xl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h3 className="text-white font-bold text-sm flex items-center gap-2">
           <ListIcon size={18} className="text-emerald-400" />
           <span>Pilih &amp; Ceklis Lagu</span>
         </h3>
-        <span className="text-slate-400 text-xs font-semibold">
-          {filtered.length} Lagu Tersedia
-        </span>
+
+        <div className="flex items-center gap-2">
+          {onOpenSpotifySearch && (
+            <button
+              type="button"
+              onClick={onOpenSpotifySearch}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-extrabold text-xs flex items-center gap-2 transition-all active:scale-95 shadow-sm shadow-emerald-500/10"
+            >
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.498 17.307c-.218.358-.68.472-1.038.254-2.846-1.74-6.428-2.133-10.648-1.168-.41.094-.82-.162-.914-.572-.093-.41.163-.82.573-.914 4.624-1.057 8.583-.615 11.773 1.362.358.218.472.68.254 1.038zm1.467-3.262c-.274.446-.86.588-1.306.314-3.258-2.003-8.224-2.585-12.077-1.415-.498.151-1.028-.135-1.18-.633-.15-.498.136-1.028.634-1.18 4.407-1.338 9.883-.69 13.615 1.608.446.274.588.86.314 1.306zm.126-3.41c-3.908-2.32-10.354-2.533-14.093-1.398-.6.182-1.238-.162-1.42-.762-.182-.6.162-1.238.762-1.42 4.303-1.306 11.417-1.055 15.918 1.617.538.319.713 1.018.394 1.556-.319.538-1.018.713-1.556.394z" />
+              </svg>
+              <span>Cari di Spotify</span>
+            </button>
+          )}
+          <span className="text-slate-400 text-xs font-semibold">
+            {filtered.length} Lagu Tersedia
+          </span>
+        </div>
       </div>
 
       {/* Search Input */}

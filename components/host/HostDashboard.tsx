@@ -20,6 +20,7 @@ import {
 import { AudioPlayer } from './AudioPlayer'
 import { BuzzControlPanel } from './BuzzControlPanel'
 import { SongSelector } from './SongSelector'
+import { SpotifySearchModal } from './SpotifySearchModal'
 import { PlayerListPanel } from './PlayerListPanel'
 import { TournamentBracket } from './TournamentBracket'
 import { Leaderboard } from '@/components/shared/Leaderboard'
@@ -62,8 +63,72 @@ export function HostDashboard({
     }
   }, [gameMode])
 
-  const currentSong = songs.find((s) => s.id === game.current_song_id) ?? null
+  const [isSpotifyModalOpen, setIsSpotifyModalOpen] = useState(false)
+  const [songList, setSongList] = useState<Song[]>(songs)
+  const [spotifyConnectedBanner, setSpotifyConnectedBanner] = useState(false)
+
+  // Keep songList updated with prop
+  useEffect(() => {
+    setSongList(songs)
+  }, [songs])
+
+  // Check URL param if Spotify just connected
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('spotify') === 'connected') {
+        setSpotifyConnectedBanner(true)
+        const timer = setTimeout(() => setSpotifyConnectedBanner(false), 7000)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [])
+
+  const currentSong = songList.find((s) => s.id === game.current_song_id) ?? null
   const buzzWinner = players.find((p) => p.id === game.buzz_winner_id) ?? null
+
+  const handleSelectSpotifyTrack = async (track: { title: string; artist: string; uri: string }) => {
+    setIsLoading(true)
+    try {
+      const res = await fetch(`/api/admin/${game.room_code}/spotify-song`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-host-password': hostSession.hostPassword,
+        },
+        body: JSON.stringify({
+          title: track.title,
+          artist: track.artist,
+          spotifyUri: track.uri,
+          roundType: game.current_round,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || 'Gagal memilih lagu dari Spotify')
+        return
+      }
+      if (data.songId) {
+        const newSong: Song = {
+          id: data.songId,
+          title: track.title,
+          artist: track.artist,
+          audio_url: track.uri,
+          round_type: game.current_round,
+          difficulty: 'MEDIUM',
+          active: true,
+        }
+        setSongList((prev) => {
+          if (prev.some((s) => s.id === data.songId)) return prev
+          return [newSong, ...prev]
+        })
+      }
+    } catch (err) {
+      console.error('Error selecting Spotify song:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   // Play sound when someone buzzes in
   const lastWinnerRef = useRef<string | null>(null)
@@ -155,6 +220,13 @@ export function HostDashboard({
   const handleResetTournament = useCallback(async () => {
     await hostAction('RESET_TOURNAMENT')
   }, [hostAction])
+
+  const handleSetQualifyCount = useCallback(
+    async (count: 2 | 3) => {
+      await hostAction('SET_QUALIFY_COUNT', { count })
+    },
+    [hostAction]
+  )
 
   const handleEndGame = async () => {
     setIsLoading(true)
@@ -332,6 +404,30 @@ export function HostDashboard({
             ))}
           </div>
 
+          {game.status === 'ROUND_COMPLETE' ? (
+            <button
+              type="button"
+              onClick={() => hostAction('SET_GAME_STATUS', { status: 'ROUND_ACTIVE' })}
+              disabled={isLoading}
+              className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs sm:text-sm font-black transition-all active:scale-95 shadow-md shadow-emerald-500/25 flex items-center gap-2"
+              title="Kembali ke gameplay aktif"
+            >
+              <MusicIcon size={14} />
+              <span>Lanjutkan Permainan</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => hostAction('SET_GAME_STATUS', { status: 'ROUND_COMPLETE' })}
+              disabled={isLoading}
+              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs sm:text-sm font-black transition-all active:scale-95 shadow-md shadow-amber-400/25 flex items-center gap-2"
+              title="Tampilkan podium pemenang juara 1 dan leaderboard lengkap ke seluruh layar pemain"
+            >
+              <CrownIcon size={14} />
+              <span>Umumkan Juara</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setConfirmEndGame(true)}
@@ -343,6 +439,23 @@ export function HostDashboard({
           </button>
         </div>
       </div>
+
+      {/* Spotify Connected Success Banner */}
+      {spotifyConnectedBanner && (
+        <div className="glass-panel rounded-2xl p-4 border border-emerald-500/50 bg-emerald-500/20 text-emerald-300 text-sm font-bold flex items-center justify-between gap-3 shadow-lg shadow-emerald-500/10 animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+            <span>Akun Spotify Anda berhasil terhubung! Web Playback SDK kini aktif.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSpotifyConnectedBanner(false)}
+            className="text-xs bg-emerald-500/30 hover:bg-emerald-500/40 text-emerald-200 px-3 py-1 rounded-xl transition-colors"
+          >
+            Tutup
+          </button>
+        </div>
+      )}
 
       {/* Confirmation Modal: End Game & Delete Room */}
       {confirmEndGame && (
@@ -453,6 +566,7 @@ export function HostDashboard({
             songArtist={currentSong?.artist ?? null}
             buzzState={game.buzz_state}
             songId={game.current_song_id}
+            roomCode={game.room_code}
           />
 
           {/* Buzzer Console (Status Buzzer HP ditaruh di bawah pemutar lagu) */}
@@ -490,11 +604,12 @@ export function HostDashboard({
 
           {/* Tracklist Selector */}
           <SongSelector
-            songs={songs}
+            songs={songList}
             currentSongId={game.current_song_id}
             currentRound={game.current_round}
             onSelectSong={(song) => hostAction('SET_CURRENT_SONG', { songId: song.id })}
             onChangeRound={(round) => hostAction('SET_ROUND', { round })}
+            onOpenSpotifySearch={() => setIsSpotifyModalOpen(true)}
           />
         </div>
 
@@ -545,6 +660,7 @@ export function HostDashboard({
                   onStartGroupA={handleStartGroupA}
                   onStartGroupB={handleStartGroupB}
                   onResetTournament={handleResetTournament}
+                  onSetQualifyCount={handleSetQualifyCount}
                   isLoading={isLoading}
                 />
               )}
@@ -563,6 +679,14 @@ export function HostDashboard({
           </div>
         </div>
       </div>
+
+      {/* Spotify Track Search Modal */}
+      <SpotifySearchModal
+        isOpen={isSpotifyModalOpen}
+        onClose={() => setIsSpotifyModalOpen(false)}
+        onSelectTrack={handleSelectSpotifyTrack}
+        isLoading={isLoading}
+      />
     </div>
   )
 }
