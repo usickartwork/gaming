@@ -15,9 +15,7 @@ async function getClientCredentialsToken(): Promise<string | null> {
         'Content-Type': 'application/x-www-form-urlencoded',
         Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
       },
-      body: new URLSearchParams({
-        grant_type: 'client_credentials',
-      }),
+      body: 'grant_type=client_credentials',
     })
     const data = await res.json()
     return data.access_token || null
@@ -33,18 +31,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ tracks: [] })
   }
 
-  let token = req.cookies.get('spotify_access_token')?.value
+  // Client credentials flow is optimal for searching public catalog
+  let token = await getClientCredentialsToken()
+
+  // Fallback to user access token cookie if client credentials token failed
   if (!token) {
-    token = (await getClientCredentialsToken()) || undefined
+    token = req.cookies.get('spotify_access_token')?.value || null
   }
 
   if (!token) {
-    return NextResponse.json({ error: 'Spotify API credentials not available' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Kredensial Spotify API tidak tersedia. Periksa Client ID & Client Secret.' },
+      { status: 500 }
+    )
   }
 
   try {
+    // Note: Spotify Client Credentials flow permits a maximum limit of 10
     const spotifyRes = await fetch(
-      `https://api.spotify.com/v1/search?type=track&limit=20&q=${encodeURIComponent(q.trim())}`,
+      `https://api.spotify.com/v1/search?type=track&limit=10&q=${encodeURIComponent(q.trim())}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -53,30 +58,17 @@ export async function GET(req: NextRequest) {
     )
 
     if (!spotifyRes.ok) {
-      // If unauthorized, attempt client credentials once
-      const fallbackToken = await getClientCredentialsToken()
-      if (fallbackToken && fallbackToken !== token) {
-        const retryRes = await fetch(
-          `https://api.spotify.com/v1/search?type=track&limit=20&q=${encodeURIComponent(q.trim())}`,
-          {
-            headers: {
-              Authorization: `Bearer ${fallbackToken}`,
-            },
-          }
-        )
-        if (retryRes.ok) {
-          const retryData = await retryRes.json()
-          return formatSpotifyTracks(retryData)
-        }
-      }
-      return NextResponse.json({ error: 'Failed to search Spotify' }, { status: spotifyRes.status })
+      const errData = await spotifyRes.json().catch(() => null)
+      const message = errData?.error?.message || `Spotify API error (${spotifyRes.status})`
+      console.error('Spotify search failed:', spotifyRes.status, errData)
+      return NextResponse.json({ error: message }, { status: spotifyRes.status })
     }
 
     const data = await spotifyRes.json()
     return formatSpotifyTracks(data)
   } catch (err) {
     console.error('Spotify search error:', err)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error saat mencari lagu' }, { status: 500 })
   }
 }
 
@@ -89,7 +81,7 @@ function formatSpotifyTracks(data: any) {
     album: item.album?.name,
     albumArt: item.album?.images?.[0]?.url || item.album?.images?.[1]?.url || null,
     durationMs: item.duration_ms,
-    uri: item.uri, // e.g. "spotify:track:4cOdK2wGLETKBW3PvgPWqT"
+    uri: item.uri, // e.g. "spotify:track:5gkTGkjFB5wAd3mSBEcQPY"
     previewUrl: item.preview_url || null,
   }))
 

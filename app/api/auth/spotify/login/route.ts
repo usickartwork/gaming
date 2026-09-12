@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const DEFAULT_CLIENT_ID = '452cdcb1d72d48d994f0f8a8156266a5'
-
 export async function GET(req: NextRequest) {
-  const clientId = process.env.SPOTIFY_CLIENT_ID || DEFAULT_CLIENT_ID
+  const clientId = process.env.SPOTIFY_CLIENT_ID
   if (!clientId) {
     return NextResponse.json({ error: 'SPOTIFY_CLIENT_ID not configured' }, { status: 500 })
   }
@@ -34,3 +32,4 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.redirect(authUrl.toString())
 }
+

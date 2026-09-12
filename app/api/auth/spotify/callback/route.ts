@@ -26,11 +26,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${redirectTarget}&error=${encodeURIComponent(error || 'cancelled')}`)
   }
 
-  const DEFAULT_CLIENT_ID = '452cdcb1d72d48d994f0f8a8156266a5'
-  const DEFAULT_CLIENT_SECRET = '58b241c53ea34a9a92b2a78b5c1ebfc8'
-
-  const clientId = process.env.SPOTIFY_CLIENT_ID || DEFAULT_CLIENT_ID
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET || DEFAULT_CLIENT_SECRET
+  const clientId = process.env.SPOTIFY_CLIENT_ID
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET
 
   if (!clientId || !clientSecret) {
     return NextResponse.redirect(`${redirectTarget}&error=missing_credentials`)
@@ -84,3 +81,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${redirectTarget}&error=server_error`)
   }
 }
+

@@ -64,14 +64,8 @@ export function HostDashboard({
   }, [gameMode])
 
   const [isSpotifyModalOpen, setIsSpotifyModalOpen] = useState(false)
-  const [spotifyInitialQuery, setSpotifyInitialQuery] = useState('')
   const [songList, setSongList] = useState<Song[]>(songs)
   const [spotifyConnectedBanner, setSpotifyConnectedBanner] = useState(false)
-
-  const handleOpenSpotifySearch = (query?: string) => {
-    setSpotifyInitialQuery(query || '')
-    setIsSpotifyModalOpen(true)
-  }
 
   // Keep songList updated with prop
   useEffect(() => {
@@ -615,7 +609,7 @@ export function HostDashboard({
             currentRound={game.current_round}
             onSelectSong={(song) => hostAction('SET_CURRENT_SONG', { songId: song.id })}
             onChangeRound={(round) => hostAction('SET_ROUND', { round })}
-            onOpenSpotifySearch={handleOpenSpotifySearch}
+            onOpenSpotifySearch={() => setIsSpotifyModalOpen(true)}
           />
         </div>
 
@@ -691,7 +685,6 @@ export function HostDashboard({
         isOpen={isSpotifyModalOpen}
         onClose={() => setIsSpotifyModalOpen(false)}
         onSelectTrack={handleSelectSpotifyTrack}
-        initialQuery={spotifyInitialQuery}
         isLoading={isLoading}
       />
     </div>
