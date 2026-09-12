@@ -23,7 +23,21 @@ export async function POST(
 
     const supabase = getSupabaseServerClient()
 
-    // 1 & 2. Verify player session and get game in PARALLEL (cuts latency by 50%)
+    // Ultra-fast path: single atomic RPC (< 1ms inside PostgreSQL)
+    const { data: claimResult, error: claimErr } = await supabase.rpc('claim_buzz', {
+      p_room_code: roomCode.toUpperCase(),
+      p_player_id: playerId,
+      p_session_token: sessionToken,
+    })
+
+    if (!claimErr && claimResult) {
+      if (!claimResult.ok) {
+        return NextResponse.json({ error: claimResult.error }, { status: 400 })
+      }
+      return NextResponse.json(claimResult)
+    }
+
+    // Fallback: parallel verification queries
     const [
       { data: player, error: playerErr },
       { data: game, error: gameErr }
