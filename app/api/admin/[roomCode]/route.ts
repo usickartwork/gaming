@@ -106,10 +106,10 @@ export async function PATCH(
           .update({ excluded_attempt: null })
           .eq('game_id', game.id)
 
-        // Reset ready state for the new song
+        // Reset ready state & countdown for the new song
         const ts = getTournamentState(game)
-        if (ts && ts.readyPlayerIds && ts.readyPlayerIds.length > 0) {
-          const updatedTS = { ...ts, readyPlayerIds: [] }
+        if (ts) {
+          const updatedTS = { ...ts, readyPlayerIds: [], countdownEndTime: null }
           await saveGameTournament(supabase, game.id, game.name, updatedTS, ts.mode || 'CLASSIC')
         }
         break
@@ -144,10 +144,10 @@ export async function PATCH(
           .update({ excluded_attempt: null })
           .eq('game_id', game.id)
 
-        // Reset ready state for next song
+        // Reset ready state & countdown for next song
         const ts = getTournamentState(game)
-        if (ts && ts.readyPlayerIds && ts.readyPlayerIds.length > 0) {
-          const updatedTS = { ...ts, readyPlayerIds: [] }
+        if (ts) {
+          const updatedTS = { ...ts, readyPlayerIds: [], countdownEndTime: null }
           await saveGameTournament(supabase, game.id, game.name, updatedTS, ts.mode || 'CLASSIC')
         }
         break
@@ -155,7 +155,70 @@ export async function PATCH(
 
       case 'RESET_READY': {
         const ts = getTournamentState(game)
-        const updatedTS = { ...ts, readyPlayerIds: [] } as TournamentState
+        const updatedTS = { ...ts, readyPlayerIds: [], countdownEndTime: null } as TournamentState
+        await saveGameTournament(supabase, game.id, game.name, updatedTS, ts?.mode || 'CLASSIC')
+        break
+      }
+
+      case 'START_COUNTDOWN': {
+        const ts = getTournamentState(game)
+        const duration = payload?.duration || 3300 // 3.3s gives full 3, 2, 1, MULAI
+        const countdownEndTime = Date.now() + duration
+        const updatedTS = {
+          ...ts,
+          countdownEndTime,
+          mode: ts?.mode || 'CLASSIC',
+          phase: ts?.phase || 'GROUP_A',
+          groupAPlayerIds: ts?.groupAPlayerIds || [],
+          groupBPlayerIds: ts?.groupBPlayerIds || [],
+          matches: ts?.matches || [],
+          activeMatchId: ts?.activeMatchId || null,
+          targetPoints: ts?.targetPoints || 2,
+          championId: ts?.championId || null,
+        } as TournamentState
+
+        // Ensure buzzer is locked/disabled during countdown
+        await supabase
+          .from('games')
+          .update({ buzz_state: 'DISABLED', buzz_winner_id: null })
+          .eq('id', game.id)
+
+        await saveGameTournament(supabase, game.id, game.name, updatedTS, ts?.mode || 'CLASSIC')
+        break
+      }
+
+      case 'FINISH_COUNTDOWN': {
+        const ts = getTournamentState(game)
+        const updatedTS = { ...ts, countdownEndTime: null } as TournamentState
+
+        // Open buzzer for players
+        await supabase
+          .from('games')
+          .update({
+            buzz_state: 'READY',
+            buzz_winner_id: null,
+            current_attempt: 1,
+          })
+          .eq('id', game.id)
+
+        await supabase
+          .from('players')
+          .update({ excluded_attempt: null })
+          .eq('game_id', game.id)
+
+        await saveGameTournament(supabase, game.id, game.name, updatedTS, ts?.mode || 'CLASSIC')
+        break
+      }
+
+      case 'CANCEL_COUNTDOWN': {
+        const ts = getTournamentState(game)
+        const updatedTS = { ...ts, countdownEndTime: null } as TournamentState
+
+        await supabase
+          .from('games')
+          .update({ buzz_state: 'DISABLED', buzz_winner_id: null })
+          .eq('id', game.id)
+
         await saveGameTournament(supabase, game.id, game.name, updatedTS, ts?.mode || 'CLASSIC')
         break
       }

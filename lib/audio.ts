@@ -148,3 +148,48 @@ export function playWrongSound() {
   }
 }
 
+/**
+ * 3-2-1 Countdown beeps synthesizer
+ * 3, 2, 1: 440Hz short beep
+ * GO/START: 880Hz triumphant energetic tone
+ */
+export function playCountdownBeep(isFinal = false) {
+  try {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const now = ctx.currentTime
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    if (isFinal) {
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(880, now) // A5
+      osc.frequency.exponentialRampToValueAtTime(1046.5, now + 0.15) // C6
+
+      gain.gain.setValueAtTime(0.4, now)
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(now)
+      osc.stop(now + 0.4)
+    } else {
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(440, now) // A4
+
+      gain.gain.setValueAtTime(0.3, now)
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(now)
+      osc.stop(now + 0.15)
+    }
+  } catch (e) {
+    console.error('Audio countdown beep error:', e)
+  }
+}
+

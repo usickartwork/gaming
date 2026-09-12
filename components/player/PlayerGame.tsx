@@ -7,6 +7,7 @@ import { usePlayers } from '@/lib/hooks/usePlayers'
 import { usePresence } from '@/lib/hooks/usePresence'
 import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
 import { BuzzButton } from './BuzzButton'
+import { CountdownOverlay } from '@/components/shared/CountdownOverlay'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
 import { TournamentBracketModal } from './TournamentBracketModal'
@@ -81,6 +82,9 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const readyCount = readyPlayerIds.length
   const totalPlayers = players.length
   const [isTogglingReady, setIsTogglingReady] = useState(false)
+
+  const countdownEndTime = tournamentState?.countdownEndTime ?? null
+  const isCountingDown = typeof countdownEndTime === 'number' && countdownEndTime > Date.now()
 
   const handleToggleReady = async () => {
     if (isTogglingReady) return
@@ -895,7 +899,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       </div>
 
       {/* Center: Ready Check Card when buzzer is disabled, or Buzz Dome Button when active */}
-      {game.buzz_state === 'DISABLED' ? (
+      {game.buzz_state === 'DISABLED' && !isCountingDown ? (
         <div className="my-auto py-6 flex flex-col items-center justify-center relative z-10 max-w-sm mx-auto w-full space-y-4">
           <div className="w-full glass-panel rounded-3xl p-5 sm:p-6 border border-white/10 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95">
             <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
@@ -934,7 +938,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
                 </div>
                 <p className="text-slate-400 text-xs">
                   {readyCount >= totalPlayers
-                    ? 'Semua pemain sudah siap! Host akan segera memutar lagu.'
+                    ? 'Semua pemain sudah siap! Lagu akan segera diputar.'
                     : `Menunggu pemain lain (${readyCount}/${totalPlayers} siap)...`}
                 </p>
                 <button
@@ -952,7 +956,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       ) : (
         <div className="my-auto py-8 flex items-center justify-center relative z-10">
           <BuzzButton
-            buzzState={game.buzz_state}
+            buzzState={isCountingDown ? 'DISABLED' : game.buzz_state}
             isWinner={isWinner}
             onBuzz={handleBuzz}
             isExcluded={isExcluded}
@@ -1013,6 +1017,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           </div>
         )}
       </div>
+
+      {/* Synchronized 3-2-1 Countdown Overlay */}
+      {isCountingDown && (
+        <CountdownOverlay
+          countdownEndTime={countdownEndTime}
+          isHost={false}
+        />
+      )}
     </div>
   )
 }

@@ -22,6 +22,7 @@ import { BuzzControlPanel } from './BuzzControlPanel'
 import { SongSelector } from './SongSelector'
 import { PlayerListPanel } from './PlayerListPanel'
 import { TournamentBracket } from './TournamentBracket'
+import { CountdownOverlay } from '@/components/shared/CountdownOverlay'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
 import {
@@ -59,6 +60,11 @@ export function HostDashboard({
   const readyCount = readyPlayerIds.length
   const totalPlayers = players.length
   const allReady = totalPlayers > 0 && readyCount >= totalPlayers
+
+  const countdownEndTime = tournamentState?.countdownEndTime ?? null
+  const isCountingDown = typeof countdownEndTime === 'number' && countdownEndTime > Date.now()
+  const [shouldAutoPlay, setShouldAutoPlay] = useState(false)
+  const [autoStartWhenReady, setAutoStartWhenReady] = useState(true)
 
   // Switch tab to bracket automatically when tournament mode is selected
   useEffect(() => {
@@ -98,6 +104,25 @@ export function HostDashboard({
     },
     [game.room_code, hostSession.hostPassword]
   )
+
+  const handleCountdownFinished = useCallback(async () => {
+    setShouldAutoPlay(true)
+    await hostAction('FINISH_COUNTDOWN')
+  }, [hostAction])
+
+  // Auto-trigger 3-2-1 countdown when all players are ready
+  const autoStartFiredRef = useRef(false)
+  useEffect(() => {
+    if (!allReady || game.buzz_state !== 'DISABLED' || !currentSong) {
+      autoStartFiredRef.current = false
+      return
+    }
+
+    if (autoStartWhenReady && allReady && !isCountingDown && !autoStartFiredRef.current) {
+      autoStartFiredRef.current = true
+      hostAction('START_COUNTDOWN')
+    }
+  }, [autoStartWhenReady, allReady, isCountingDown, game.buzz_state, currentSong, hostAction])
 
   const handleUpdateScore = useCallback(
     async (playerId: string, score: number) => {
@@ -522,6 +547,24 @@ export function HostDashboard({
                 <p className="text-xs text-slate-500 italic">Belum ada pemain bergabung di room.</p>
               )}
             </div>
+
+            {/* Auto start countdown toggle */}
+            <div className="pt-1 border-t border-white/5 flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-400 hover:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={autoStartWhenReady}
+                  onChange={(e) => setAutoStartWhenReady(e.target.checked)}
+                  className="rounded accent-emerald-400 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span>Otomatis hitung mundur 3-2-1 saat semua siap</span>
+              </label>
+              {autoStartWhenReady && allReady && (
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30 animate-pulse">
+                  Auto-Start Aktif
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Audio Player Deck */}
@@ -534,6 +577,10 @@ export function HostDashboard({
             readyCount={readyCount}
             totalPlayers={totalPlayers}
             allReady={allReady}
+            isCountingDown={isCountingDown}
+            shouldAutoPlay={shouldAutoPlay}
+            onAutoPlayHandled={() => setShouldAutoPlay(false)}
+            onStartCountdown={() => hostAction('START_COUNTDOWN')}
           />
 
           {/* Next Song Action Banner */}
@@ -644,6 +691,15 @@ export function HostDashboard({
           </div>
         </div>
       </div>
+
+      {/* Synchronized 3-2-1 Countdown Overlay */}
+      {isCountingDown && (
+        <CountdownOverlay
+          countdownEndTime={countdownEndTime}
+          onFinished={handleCountdownFinished}
+          isHost={true}
+        />
+      )}
     </div>
   )
 }

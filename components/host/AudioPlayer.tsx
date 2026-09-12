@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect, useCallback } from 'react'
-import { MusicIcon, DiscIcon, PlayIcon, PauseIcon, StopIcon, ShuffleIcon } from '@/components/shared/Icons'
+import { MusicIcon, DiscIcon, PlayIcon, PauseIcon, StopIcon, ShuffleIcon, LightningIcon, LockIcon } from '@/components/shared/Icons'
 import type { BuzzState } from '@/lib/types'
 
 interface AudioPlayerProps {
@@ -13,6 +13,10 @@ interface AudioPlayerProps {
   readyCount?: number
   totalPlayers?: number
   allReady?: boolean
+  isCountingDown?: boolean
+  shouldAutoPlay?: boolean
+  onAutoPlayHandled?: () => void
+  onStartCountdown?: () => void
 }
 
 export function AudioPlayer({
@@ -24,6 +28,10 @@ export function AudioPlayer({
   readyCount = 0,
   totalPlayers = 0,
   allReady = false,
+  isCountingDown = false,
+  shouldAutoPlay = false,
+  onAutoPlayHandled,
+  onStartCountdown,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -99,7 +107,7 @@ export function AudioPlayer({
     }
   }, [buzzState, randomStart])
 
-  const handlePlay = () => {
+  const handlePlay = useCallback(() => {
     if (!audioRef.current) return
     // If starting for the first time in guess mode, jump to random start
     if (!isFullPlay && currentTime === 0 && randomStart > 0) {
@@ -108,7 +116,15 @@ export function AudioPlayer({
     }
     audioRef.current.play()
     setPlaying(true)
-  }
+  }, [isFullPlay, currentTime, randomStart])
+
+  // Trigger auto-play when countdown finishes
+  useEffect(() => {
+    if (shouldAutoPlay && !playing && audioRef.current) {
+      handlePlay()
+      onAutoPlayHandled?.()
+    }
+  }, [shouldAutoPlay, playing, handlePlay, onAutoPlayHandled])
 
   const handlePause = () => {
     audioRef.current?.pause()
@@ -288,16 +304,61 @@ export function AudioPlayer({
 
       {/* Control Buttons Deck */}
       <div className="flex gap-3 relative z-10">
-        {!playing ? (
+        {isCountingDown ? (
           <button
-            onClick={handlePlay}
-            className="flex-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/20 text-sm sm:text-base flex items-center justify-center gap-2"
+            type="button"
+            disabled
+            className="flex-1 bg-gradient-to-r from-amber-500/20 to-amber-600/20 border-2 border-amber-400/80 text-amber-300 font-black py-4 rounded-2xl text-sm sm:text-base flex items-center justify-center gap-2.5 animate-pulse cursor-wait shadow-lg shadow-amber-500/20"
           >
-            <PlayIcon size={16} />
-            <span>PUTAR LAGU (LAPTOP)</span>
+            <LightningIcon size={18} className="animate-spin text-amber-400" />
+            <span>SEDANG HITUNG MUNDUR (3.. 2.. 1..)...</span>
           </button>
+        ) : !playing ? (
+          buzzState === 'DISABLED' && onStartCountdown ? (
+            // In DISABLED state: must be ready before playing
+            !allReady && totalPlayers > 0 ? (
+              <div className="flex-1 flex gap-2">
+                <button
+                  type="button"
+                  disabled
+                  className="flex-1 bg-slate-800/80 border border-white/10 text-slate-400 font-bold py-4 rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 cursor-not-allowed opacity-80"
+                  title="Semua pemain harus menekan tombol 'SAYA SIAP' di HP masing-masing"
+                >
+                  <LockIcon size={16} />
+                  <span>MENUNGGU SEMUA SIAP ({readyCount}/{totalPlayers})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onStartCountdown}
+                  className="px-4 py-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-bold transition-all shrink-0 active:scale-95"
+                  title="Mulai hitungan 3-2-1 langsung tanpa menunggu seluruh pemain siap"
+                >
+                  Bypass
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onStartCountdown}
+                className="flex-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500 hover:brightness-110 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-xl shadow-emerald-500/30 text-sm sm:text-base flex items-center justify-center gap-2.5 animate-pulse border-2 border-white/40"
+              >
+                <PlayIcon size={18} />
+                <span>MULAI PERMAINAN (3.. 2.. 1..)</span>
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={handlePlay}
+              className="flex-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/20 text-sm sm:text-base flex items-center justify-center gap-2"
+            >
+              <PlayIcon size={16} />
+              <span>PUTAR LAGU (LAPTOP)</span>
+            </button>
+          )
         ) : (
           <button
+            type="button"
             onClick={handlePause}
             className="flex-1 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-amber-500/20 text-sm sm:text-base flex items-center justify-center gap-2"
           >
@@ -306,8 +367,9 @@ export function AudioPlayer({
           </button>
         )}
         <button
+          type="button"
           onClick={handleStop}
-          className="bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white font-bold py-4 px-6 rounded-2xl border border-white/10 transition-all active:scale-95 text-sm sm:text-base flex items-center justify-center gap-2"
+          className="bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white font-bold py-4 px-6 rounded-2xl border border-white/10 transition-all active:scale-95 text-sm sm:text-base flex items-center justify-center gap-2 shrink-0"
         >
           <StopIcon size={16} />
           <span>STOP</span>

@@ -290,6 +290,7 @@ export function getTournamentState(game: { tournament_state?: TournamentState | 
     }
     if (!parsed.targetPoints) parsed.targetPoints = 2
     if (!parsed.readyPlayerIds) parsed.readyPlayerIds = []
+    if (parsed.countdownEndTime === undefined) parsed.countdownEndTime = null
   }
 
   return parsed

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ListIcon, SearchIcon, PlayIcon, MusicIcon } from '@/components/shared/Icons'
+import { ListIcon, SearchIcon, PlayIcon, MusicIcon, CheckIcon } from '@/components/shared/Icons'
 import type { Song, RoundType } from '@/lib/types'
 
 interface SongSelectorProps {
@@ -39,7 +39,7 @@ export function SongSelector({
       <div className="flex items-center justify-between">
         <h3 className="text-white font-bold text-sm flex items-center gap-2">
           <ListIcon size={18} className="text-emerald-400" />
-          <span>Daftar Lagu</span>
+          <span>Pilih &amp; Ceklis Lagu</span>
         </h3>
         <span className="text-slate-400 text-xs font-semibold">
           {filtered.length} Lagu Tersedia
@@ -60,7 +60,7 @@ export function SongSelector({
         />
       </div>
 
-      {/* Song list */}
+      {/* Song list with Checklist items */}
       <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
         {filtered.map((song) => {
           const isSelected = currentSongId === song.id
@@ -68,26 +68,41 @@ export function SongSelector({
             <button
               key={song.id}
               onClick={() => onSelectSong(song)}
-              className={`w-full text-left p-3.5 rounded-2xl transition-all border flex items-center justify-between gap-3 ${
+              type="button"
+              className={`w-full text-left p-3.5 rounded-2xl transition-all border flex items-center justify-between gap-3 group ${
                 isSelected
-                  ? 'bg-emerald-500/15 border-emerald-500/50 shadow-md shadow-emerald-950/40'
+                  ? 'bg-emerald-500/20 border-emerald-500/60 shadow-lg shadow-emerald-950/50 ring-1 ring-emerald-400/40'
                   : 'bg-slate-900/60 hover:bg-slate-800/80 border-white/5'
               }`}
             >
               <div className="min-w-0 flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0 ${isSelected ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400'}`}>
-                  {isSelected ? <PlayIcon size={12} /> : <MusicIcon size={14} />}
+                {/* Checklist Box */}
+                <div
+                  className={`w-7 h-7 rounded-xl border-2 flex items-center justify-center shrink-0 transition-all ${
+                    isSelected
+                      ? 'bg-emerald-400 border-emerald-400 text-slate-950 shadow-md shadow-emerald-400/40 scale-105'
+                      : 'border-slate-600 bg-slate-800/80 group-hover:border-slate-400 text-transparent'
+                  }`}
+                >
+                  <CheckIcon size={16} className={isSelected ? 'stroke-[3]' : 'opacity-0'} />
                 </div>
                 <div className="truncate">
-                  <p className={`font-bold text-sm truncate ${isSelected ? 'text-emerald-300' : 'text-white'}`}>
+                  <p className={`font-bold text-sm truncate ${isSelected ? 'text-emerald-300 font-extrabold' : 'text-white'}`}>
                     {song.title}
                   </p>
                   <p className="text-xs text-slate-400 truncate">{song.artist}</p>
                 </div>
               </div>
-              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${DIFFICULTY_COLORS[song.difficulty]}`}>
-                {song.difficulty}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                {isSelected && (
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-400/20 text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-400/40">
+                    Ceklis Dipilih
+                  </span>
+                )}
+                <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${DIFFICULTY_COLORS[song.difficulty]}`}>
+                  {song.difficulty}
+                </span>
+              </div>
             </button>
           )
         })}
