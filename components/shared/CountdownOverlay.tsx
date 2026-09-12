@@ -18,6 +18,11 @@ export function CountdownOverlay({
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const lastSecondRef = useRef<number | null>(null)
   const finishedCalledRef = useRef(false)
+  // Store onFinished in a ref so changing callback reference doesn't restart the timer effect
+  const onFinishedRef = useRef(onFinished)
+  useEffect(() => {
+    onFinishedRef.current = onFinished
+  }, [onFinished])
 
   useEffect(() => {
     if (!countdownEndTime) {
@@ -43,7 +48,7 @@ export function CountdownOverlay({
           finishedCalledRef.current = true
           // Small grace period for "MULAI!" display before callback
           setTimeout(() => {
-            onFinished?.()
+            onFinishedRef.current?.()
           }, 450)
         }
         return
@@ -61,7 +66,7 @@ export function CountdownOverlay({
     updateTimer()
     const interval = setInterval(updateTimer, 50)
     return () => clearInterval(interval)
-  }, [countdownEndTime, onFinished])
+  }, [countdownEndTime])
 
   if (secondsLeft === null) return null
 

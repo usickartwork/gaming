@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   TrophyIcon,
   CrownIcon,
@@ -37,6 +37,13 @@ export function TournamentBracketModal({
   const [modalTab, setModalTab] = useState<'groups' | 'knockout'>(
     phase === 'KNOCKOUT' ? 'knockout' : 'groups'
   )
+
+  // Sync tab automatically when phase changes to KNOCKOUT at runtime
+  useEffect(() => {
+    if (phase === 'KNOCKOUT') {
+      setModalTab('knockout')
+    }
+  }, [phase])
 
   if (!isOpen || !tournamentState) return null
 

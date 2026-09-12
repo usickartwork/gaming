@@ -162,8 +162,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (
       game.buzz_winner_id === null ||
       game.buzz_state === 'DISABLED' ||
-      game.buzz_state === 'READY' ||
-      game.buzz_state === 'RESULT'
+      game.buzz_state === 'READY'
     ) {
       setLocalWinner(null)
       setLocalWinnerName(null)

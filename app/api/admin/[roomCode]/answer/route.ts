@@ -74,7 +74,7 @@ export async function POST(
       .eq('id', game.buzz_winner_id)
       .single()
 
-    const newScore = (player?.score ?? 0) + points
+    const newScore = Math.max(0, (player?.score ?? 0) + points)
 
     await supabase
       .from('players')
