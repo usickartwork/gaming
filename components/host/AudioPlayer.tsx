@@ -60,22 +60,25 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist, buzzState, songId
     }
   }, [buzzState])
 
-  // Auto-play FULL song from 0:00 when answer is CORRECT (buzzState === RESULT)
+  // Auto-resume song from the current/random position onwards when answer is CORRECT (buzzState === RESULT)
   useEffect(() => {
     if (buzzState === 'RESULT') {
       setIsFullPlay(true)
       if (audioRef.current) {
-        audioRef.current.currentTime = 0
-        setCurrentTime(0)
+        // Do NOT restart from 0:00! Continue from current position / random start onwards
+        if (audioRef.current.currentTime === 0 && randomStart > 0) {
+          audioRef.current.currentTime = randomStart
+          setCurrentTime(randomStart)
+        }
         const playPromise = audioRef.current.play()
         if (playPromise !== undefined) {
           playPromise
             .then(() => setPlaying(true))
-            .catch((err) => console.log('Autoplay blocked by browser:', err))
+            .catch((err) => console.log('Autoplay error:', err))
         }
       }
     }
-  }, [buzzState])
+  }, [buzzState, randomStart])
 
   const handlePlay = () => {
     if (!audioRef.current) return
@@ -96,7 +99,7 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist, buzzState, songId
   const handleStop = () => {
     if (audioRef.current) {
       audioRef.current.pause()
-      const resetTime = isFullPlay ? 0 : randomStart
+      const resetTime = randomStart > 0 ? randomStart : 0
       audioRef.current.currentTime = resetTime
       setCurrentTime(resetTime)
     }
@@ -161,15 +164,15 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist, buzzState, songId
         />
       )}
 
-      {/* Mode Banner: Full Song on Correct or Random Start indicator */}
+      {/* Mode Banner: Song Resumes on Correct or Random Start indicator */}
       {isFullPlay && buzzState === 'RESULT' ? (
         <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold relative z-10 shadow-lg shadow-emerald-500/10">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span>Jawaban Benar! Memutar Lagu Penuh Otomatis</span>
+            <span>Jawaban Benar! Melanjutkan Lagu Sampai Selesai</span>
           </div>
           <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 bg-emerald-400/20 px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-            FULL TRACK
+            LANJUT MEMUTAR
           </span>
         </div>
       ) : (
