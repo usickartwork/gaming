@@ -64,8 +64,14 @@ export function HostDashboard({
   }, [gameMode])
 
   const [isSpotifyModalOpen, setIsSpotifyModalOpen] = useState(false)
+  const [spotifyInitialQuery, setSpotifyInitialQuery] = useState('')
   const [songList, setSongList] = useState<Song[]>(songs)
   const [spotifyConnectedBanner, setSpotifyConnectedBanner] = useState(false)
+
+  const handleOpenSpotifySearch = (query?: string) => {
+    setSpotifyInitialQuery(query || '')
+    setIsSpotifyModalOpen(true)
+  }
 
   // Keep songList updated with prop
   useEffect(() => {
@@ -101,6 +107,7 @@ export function HostDashboard({
           artist: track.artist,
           spotifyUri: track.uri,
           roundType: game.current_round,
+          setActive: true,
         }),
       })
       const data = await res.json()
@@ -120,13 +127,72 @@ export function HostDashboard({
         }
         setSongList((prev) => {
           if (prev.some((s) => s.id === data.songId)) return prev
-          return [newSong, ...prev]
+          return [...prev, newSong]
         })
       }
     } catch (err) {
       console.error('Error selecting Spotify song:', err)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleAddToPlaylist = async (track: { title: string; artist: string; uri: string }) => {
+    try {
+      const res = await fetch(`/api/admin/${game.room_code}/spotify-song`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-host-password': hostSession.hostPassword,
+        },
+        body: JSON.stringify({
+          title: track.title,
+          artist: track.artist,
+          spotifyUri: track.uri,
+          roundType: game.current_round,
+          setActive: false, // Do not change active playing song!
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || 'Gagal menambahkan lagu ke playlist')
+        return
+      }
+      if (data.songId) {
+        const newSong: Song = {
+          id: data.songId,
+          title: track.title,
+          artist: track.artist,
+          audio_url: track.uri,
+          round_type: game.current_round,
+          difficulty: 'MEDIUM',
+          active: true,
+        }
+        setSongList((prev) => {
+          if (prev.some((s) => s.id === data.songId)) return prev
+          return [...prev, newSong]
+        })
+      }
+    } catch (err) {
+      console.error('Error adding song to playlist:', err)
+    }
+  }
+
+  const handleDeleteSong = async (songId: string) => {
+    try {
+      const res = await fetch(`/api/admin/${game.room_code}/spotify-song`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-host-password': hostSession.hostPassword,
+        },
+        body: JSON.stringify({ songId }),
+      })
+      if (res.ok) {
+        setSongList((prev) => prev.filter((s) => s.id !== songId))
+      }
+    } catch (err) {
+      console.error('Failed to delete song:', err)
     }
   }
 
@@ -609,7 +675,8 @@ export function HostDashboard({
             currentRound={game.current_round}
             onSelectSong={(song) => hostAction('SET_CURRENT_SONG', { songId: song.id })}
             onChangeRound={(round) => hostAction('SET_ROUND', { round })}
-            onOpenSpotifySearch={() => setIsSpotifyModalOpen(true)}
+            onOpenSpotifySearch={handleOpenSpotifySearch}
+            onDeleteSong={handleDeleteSong}
           />
         </div>
 
@@ -685,6 +752,9 @@ export function HostDashboard({
         isOpen={isSpotifyModalOpen}
         onClose={() => setIsSpotifyModalOpen(false)}
         onSelectTrack={handleSelectSpotifyTrack}
+        onAddToPlaylist={handleAddToPlaylist}
+        existingSongUris={songList.map((s) => s.audio_url)}
+        initialQuery={spotifyInitialQuery}
         isLoading={isLoading}
       />
     </div>

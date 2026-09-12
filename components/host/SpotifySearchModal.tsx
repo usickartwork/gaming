@@ -18,6 +18,8 @@ interface SpotifySearchModalProps {
   isOpen: boolean
   onClose: () => void
   onSelectTrack: (track: SpotifyTrack) => Promise<void>
+  onAddToPlaylist?: (track: SpotifyTrack) => Promise<void>
+  existingSongUris?: string[]
   initialQuery?: string
   isLoading?: boolean
 }
@@ -26,15 +28,23 @@ export function SpotifySearchModal({
   isOpen,
   onClose,
   onSelectTrack,
+  onAddToPlaylist,
+  existingSongUris = [],
   initialQuery = '',
   isLoading = false,
 }: SpotifySearchModalProps) {
   const [query, setQuery] = useState('')
   const [tracks, setTracks] = useState<SpotifyTrack[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [selectedUri, setSelectedUri] = useState<string | null>(null)
+  const [addingUri, setAddingUri] = useState<string | null>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
+  const [addedUris, setAddedUris] = useState<Set<string>>(new Set())
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Sync added tracks from props
+  useEffect(() => {
+    setAddedUris(new Set(existingSongUris))
+  }, [existingSongUris])
 
   const performSearch = async (val: string) => {
     if (!val.trim()) {
@@ -79,7 +89,6 @@ export function SpotifySearchModal({
     } else {
       setQuery('')
       setTracks([])
-      setSelectedUri(null)
       setSearchError(null)
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
@@ -102,15 +111,31 @@ export function SpotifySearchModal({
     }, 350)
   }
 
-  const handlePick = async (track: SpotifyTrack) => {
-    setSelectedUri(track.uri)
+  // Quick add to playlist without closing modal
+  const handleAdd = async (track: SpotifyTrack) => {
+    if (!onAddToPlaylist) return
+    setAddingUri(track.uri)
+    try {
+      await onAddToPlaylist(track)
+      setAddedUris((prev) => new Set(prev).add(track.uri))
+    } catch (err) {
+      console.error('Add to playlist failed:', err)
+    } finally {
+      setAddingUri(null)
+    }
+  }
+
+  // Play immediately and close modal
+  const handlePickAndPlay = async (track: SpotifyTrack) => {
+    setAddingUri(track.uri)
     try {
       await onSelectTrack(track)
+      setAddedUris((prev) => new Set(prev).add(track.uri))
       onClose()
     } catch (err) {
       console.error('Pick song failed:', err)
     } finally {
-      setSelectedUri(null)
+      setAddingUri(null)
     }
   }
 
@@ -125,7 +150,7 @@ export function SpotifySearchModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="glass-panel rounded-3xl p-5 sm:p-7 max-w-xl w-full border border-emerald-500/40 bg-slate-950 shadow-2xl space-y-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95">
+      <div className="glass-panel rounded-3xl p-5 sm:p-7 max-w-2xl w-full border border-emerald-500/40 bg-slate-950 shadow-2xl space-y-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -136,8 +161,8 @@ export function SpotifySearchModal({
               </svg>
             </div>
             <div>
-              <h3 className="text-white font-black text-lg tracking-tight">Cari Lagu di Spotify</h3>
-              <p className="text-slate-400 text-xs">Ketik judul lagu atau nama musisi untuk dipilih langsung</p>
+              <h3 className="text-white font-black text-lg tracking-tight">Cari &amp; Buat Playlist Spotify</h3>
+              <p className="text-slate-400 text-xs">Pilih dan tambahkan beberapa lagu sekaligus ke playlist sesi game</p>
             </div>
           </div>
 
@@ -161,7 +186,7 @@ export function SpotifySearchModal({
                 performSearch(query)
               }
             }}
-            placeholder="Ketik judul lagu atau nama musisi... (lalu Enter)"
+            placeholder="Ketik judul lagu atau nama musisi... (tekan Enter)"
             autoFocus
             className="w-full py-3.5 px-4 pr-11 rounded-2xl bg-slate-900 border border-white/10 focus:border-emerald-400 text-white font-medium text-sm outline-none transition-all placeholder:text-slate-500"
           />
@@ -185,15 +210,21 @@ export function SpotifySearchModal({
         )}
 
         {/* Results List */}
-        <div className="overflow-y-auto space-y-2 flex-1 pr-1 min-h-[220px]">
+        <div className="overflow-y-auto space-y-2.5 flex-1 pr-1 min-h-[260px]">
           {tracks.map((track) => {
-            const isPicking = selectedUri === track.uri || isLoading
+            const isAlreadyAdded = addedUris.has(track.uri)
+            const isBusy = addingUri === track.uri || isLoading
+
             return (
               <div
                 key={track.id}
-                className="flex items-center justify-between p-3 rounded-2xl bg-slate-900/70 border border-white/5 hover:border-emerald-500/30 transition-all gap-3 group"
+                className={`flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-2xl border transition-all gap-3 ${
+                  isAlreadyAdded
+                    ? 'bg-emerald-950/20 border-emerald-500/30 ring-1 ring-emerald-500/20'
+                    : 'bg-slate-900/70 border-white/5 hover:border-white/15'
+                }`}
               >
-                <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="flex items-center gap-3.5 min-w-0 flex-1">
                   {track.albumArt ? (
                     <img
                       src={track.albumArt}
@@ -207,23 +238,47 @@ export function SpotifySearchModal({
                   )}
 
                   <div className="min-w-0 flex-1">
-                    <p className="text-white font-bold text-sm truncate group-hover:text-emerald-300 transition-colors">
+                    <p className="text-white font-bold text-sm truncate">
                       {track.title}
                     </p>
                     <p className="text-slate-400 text-xs truncate mt-0.5">{track.artist}</p>
                   </div>
+
+                  <span className="text-slate-500 font-mono text-xs shrink-0 sm:hidden">
+                    {formatDuration(track.durationMs)}
+                  </span>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-slate-500 font-mono text-xs">{formatDuration(track.durationMs)}</span>
+                <div className="flex items-center justify-end gap-2 shrink-0">
+                  <span className="text-slate-500 font-mono text-xs hidden sm:inline mr-1">
+                    {formatDuration(track.durationMs)}
+                  </span>
+
+                  {/* Button 1: Add to Playlist */}
+                  {isAlreadyAdded ? (
+                    <span className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                      <CheckIcon size={13} className="stroke-[3]" />
+                      <span>Di Playlist</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleAdd(track)}
+                      disabled={isBusy}
+                      className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 disabled:opacity-40 text-white font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5"
+                    >
+                      <span>+ Playlist</span>
+                    </button>
+                  )}
+
+                  {/* Button 2: Play Now */}
                   <button
                     type="button"
-                    onClick={() => handlePick(track)}
-                    disabled={isPicking}
-                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-black text-xs transition-all active:scale-95 shadow-md shadow-emerald-500/20 flex items-center gap-1.5"
+                    onClick={() => handlePickAndPlay(track)}
+                    disabled={isBusy}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 font-black text-xs transition-all active:scale-95 shadow-md shadow-emerald-500/20 flex items-center gap-1"
                   >
-                    <CheckIcon size={12} />
-                    <span>{isPicking ? 'Memuat...' : 'Pilih'}</span>
+                    <span>Mainkan</span>
                   </button>
                 </div>
               </div>
@@ -239,10 +294,26 @@ export function SpotifySearchModal({
 
           {!query.trim() && (
             <div className="text-center py-12 text-slate-500 space-y-1">
-              <p className="text-sm font-semibold text-slate-400">Pencarian Katalog Spotify</p>
-              <p className="text-xs">Ketik judul lagu atau nama penyanyi di atas untuk memuat pilihan lagu.</p>
+              <p className="text-sm font-semibold text-slate-300">Pencarian Katalog Spotify</p>
+              <p className="text-xs text-slate-500">
+                Ketik nama lagu di atas lalu klik <strong>&quot;+ Playlist&quot;</strong> untuk menampung beberapa lagu sekaligus.
+              </p>
             </div>
           )}
+        </div>
+
+        {/* Footer info & Done button */}
+        <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-3 shrink-0">
+          <div className="text-xs text-slate-400">
+            <span className="text-emerald-400 font-bold">{addedUris.size}</span> lagu ada di playlist game
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all active:scale-95 shadow-md shadow-emerald-500/25"
+          >
+            Selesai Memilih ({addedUris.size} Lagu)
+          </button>
         </div>
       </div>
     </div>
