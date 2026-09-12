@@ -10,9 +10,6 @@ interface AudioPlayerProps {
   songArtist: string | null
   buzzState?: BuzzState
   songId?: string | null
-  readyCount?: number
-  totalPlayers?: number
-  allReady?: boolean
   isCountingDown?: boolean
   shouldAutoPlay?: boolean
   onAutoPlayHandled?: () => void
@@ -25,9 +22,6 @@ export function AudioPlayer({
   songArtist,
   buzzState,
   songId,
-  readyCount = 0,
-  totalPlayers = 0,
-  allReady = false,
   isCountingDown = false,
   shouldAutoPlay = false,
   onAutoPlayHandled,
@@ -263,36 +257,7 @@ export function AudioPlayer({
         </div>
       </div>
 
-      {/* Player Readiness Status Indicator */}
-      {totalPlayers > 0 && !playing && buzzState === 'DISABLED' && (
-        <div
-          className={`flex items-center justify-between px-4 py-2.5 rounded-2xl border text-xs font-bold relative z-10 transition-all ${
-            allReady
-              ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-lg shadow-emerald-500/10'
-              : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                allReady ? 'bg-emerald-400' : 'bg-amber-400 animate-ping'
-              }`}
-            />
-            <span>
-              {allReady ? 'Semua Pemain Sudah Siap!' : 'Menunggu Pemain Menekan Siap'}
-            </span>
-          </div>
-          <span
-            className={`text-[11px] font-mono px-2.5 py-0.5 rounded-full border ${
-              allReady
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 font-black'
-                : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-            }`}
-          >
-            {readyCount} / {totalPlayers} SIAP
-          </span>
-        </div>
-      )}
+
 
       {/* Control Buttons Deck */}
       <div className="flex gap-3 relative z-10">

@@ -88,10 +88,10 @@ export async function POST(
       }
     }
 
-    // Check if player is excluded from this attempt
-    if (player.excluded_attempt === game.current_attempt) {
+    // Check if player is excluded from this song (answered wrong previously)
+    if (player.excluded_attempt !== null) {
       return NextResponse.json(
-        { error: 'You cannot buzz on this attempt (answered wrong previously)' },
+        { error: 'Anda sudah menjawab salah untuk lagu ini.' },
         { status: 403 }
       )
     }

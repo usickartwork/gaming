@@ -9,7 +9,14 @@ export function getPoints(
   config: ScoreConfig[] = DEFAULT_SCORE_CONFIG
 ): number {
   const cfg = config.find((c) => c.attempt_number === attemptNumber)
-  if (!cfg) return 0
+  if (!cfg) {
+    const sorted = [...config].sort((a, b) => a.attempt_number - b.attempt_number)
+    const last = sorted[sorted.length - 1]
+    if (last) {
+      return result === 'CORRECT' ? last.correct_points : last.wrong_points
+    }
+    return 0
+  }
   return result === 'CORRECT' ? cfg.correct_points : cfg.wrong_points
 }
 

@@ -47,7 +47,7 @@ export function BuzzControlPanel({
   onWrong,
   isLoading,
 }: BuzzControlPanelProps) {
-  const pts = ATTEMPT_POINTS.find((p) => p.attempt === currentAttempt) ?? ATTEMPT_POINTS[0]
+  const pts = ATTEMPT_POINTS.find((p) => p.attempt === currentAttempt) ?? ATTEMPT_POINTS[ATTEMPT_POINTS.length - 1]
   const stateInfo = BUZZ_STATE_LABELS[buzzState]
 
   return (

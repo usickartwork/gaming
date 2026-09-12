@@ -55,11 +55,6 @@ export function HostDashboard({
   const gameMode = getGameMode(game)
   const tournamentState = getTournamentState(game)
 
-  const readyPlayerIds = tournamentState?.readyPlayerIds || []
-  const readyCount = readyPlayerIds.length
-  const totalPlayers = players.length
-  const allReady = totalPlayers > 0 && readyCount >= totalPlayers
-
   // Switch tab to bracket automatically when tournament mode is selected
   useEffect(() => {
     if (gameMode === 'KNOCKOUT') {
@@ -449,81 +444,8 @@ export function HostDashboard({
 
       {/* Main Command Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Left column: Music & Tracklist (7 cols) */}
+        {/* Left column: Music, Buzzer Controller & Tracklist (7 cols) */}
         <div className="lg:col-span-7 space-y-5">
-          {/* Live Player Readiness Deck */}
-          <div className="glass-panel rounded-3xl p-5 border border-white/10 space-y-3.5 shadow-lg">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                    allReady ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
-                  }`}
-                >
-                  <CheckIcon size={16} />
-                </div>
-                <div>
-                  <h4 className="text-white font-black text-sm tracking-tight">Kesiapan Pemain</h4>
-                  <p className="text-slate-400 text-xs">
-                    {allReady
-                      ? 'Semua pemain sudah menekan tombol siap!'
-                      : 'Pastikan pemain siap sebelum musik dimulai.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <span
-                  className={`px-2.5 py-1 rounded-xl text-xs font-mono font-black border ${
-                    allReady
-                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                      : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                  }`}
-                >
-                  {readyCount} / {totalPlayers} SIAP
-                </span>
-                <button
-                  type="button"
-                  onClick={() => hostAction('RESET_READY')}
-                  disabled={isLoading || readyCount === 0}
-                  title="Minta semua pemain untuk konfirmasi siap kembali"
-                  className="px-2.5 py-1 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-all active:scale-95 disabled:opacity-40 flex items-center gap-1.5"
-                >
-                  <RefreshIcon size={12} />
-                  <span className="hidden sm:inline">Minta Ready Ulang</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Players readiness chips */}
-            <div className="flex flex-wrap gap-2 pt-1">
-              {players.map((p) => {
-                const isReady = readyPlayerIds.includes(p.id)
-                return (
-                  <div
-                    key={p.id}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                      isReady
-                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                        : 'bg-slate-900/60 border-white/5 text-slate-400 opacity-75'
-                    }`}
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        isReady ? 'bg-emerald-400' : 'bg-slate-600'
-                      }`}
-                    />
-                    <span className="truncate max-w-[120px]">{p.name}</span>
-                    {isReady && <CheckIcon size={12} className="text-emerald-400 ml-0.5" />}
-                  </div>
-                )
-              })}
-              {players.length === 0 && (
-                <p className="text-xs text-slate-500 italic">Belum ada pemain bergabung di room.</p>
-              )}
-            </div>
-          </div>
-
           {/* Audio Player Deck */}
           <AudioPlayer
             audioUrl={currentSong?.audio_url ?? null}
@@ -531,9 +453,19 @@ export function HostDashboard({
             songArtist={currentSong?.artist ?? null}
             buzzState={game.buzz_state}
             songId={game.current_song_id}
-            readyCount={readyCount}
-            totalPlayers={totalPlayers}
-            allReady={allReady}
+          />
+
+          {/* Buzzer Console (Status Buzzer HP ditaruh di bawah pemutar lagu) */}
+          <BuzzControlPanel
+            buzzState={game.buzz_state}
+            buzzWinner={buzzWinner}
+            currentAttempt={game.current_attempt}
+            onEnableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
+            onDisableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'DISABLED' })}
+            onResetBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
+            onCorrect={() => answerAction('CORRECT')}
+            onWrong={() => answerAction('WRONG')}
+            isLoading={isLoading}
           />
 
           {/* Next Song Action Banner */}
@@ -566,21 +498,8 @@ export function HostDashboard({
           />
         </div>
 
-        {/* Right column: Buzzer Controller & Tabs (5 cols) */}
+        {/* Right column: Players, Leaderboard & Tournament Tabs (5 cols) */}
         <div className="lg:col-span-5 space-y-5">
-          {/* Buzzer Console */}
-          <BuzzControlPanel
-            buzzState={game.buzz_state}
-            buzzWinner={buzzWinner}
-            currentAttempt={game.current_attempt}
-            onEnableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
-            onDisableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'DISABLED' })}
-            onResetBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
-            onCorrect={() => answerAction('CORRECT')}
-            onWrong={() => answerAction('WRONG')}
-            isLoading={isLoading}
-          />
-
           {/* Players & Leaderboard & Tournament Tabs */}
           <div className="glass-panel rounded-3xl overflow-hidden border border-white/10 shadow-xl">
             <div className="flex border-b border-white/5 bg-slate-900/60 p-1.5 gap-1">

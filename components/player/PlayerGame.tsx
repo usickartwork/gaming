@@ -76,34 +76,8 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return () => clearInterval(interval)
   }, [])
 
-  // Player readiness state
-  const readyPlayerIds = tournamentState?.readyPlayerIds || []
-  const isMeReady = readyPlayerIds.includes(session.playerId)
-  const readyCount = readyPlayerIds.length
-  const totalPlayers = players.length
-  const [isTogglingReady, setIsTogglingReady] = useState(false)
-
   const countdownEndTime = tournamentState?.countdownEndTime ?? null
   const isCountingDown = typeof countdownEndTime === 'number' && countdownEndTime > Date.now()
-
-  const handleToggleReady = async () => {
-    if (isTogglingReady) return
-    setIsTogglingReady(true)
-    try {
-      await fetch(`/api/games/${game.room_code}/ready`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-token': session.sessionToken,
-        },
-        body: JSON.stringify({ playerId: session.playerId, ready: !isMeReady }),
-      })
-    } catch (err) {
-      console.error('Toggle ready error:', err)
-    } finally {
-      setIsTogglingReady(false)
-    }
-  }
 
   // Track who was the active buzzing player before evaluate
   useEffect(() => {
@@ -191,7 +165,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const isWinner =
     game.buzz_winner_id === session.playerId ||
     (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
-  const isExcluded = me?.excluded_attempt === game.current_attempt
+  const isExcluded = Boolean(me?.excluded_attempt !== null)
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
   // Tournament state helpers
@@ -466,10 +440,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
           <div className="glass-panel rounded-3xl p-5 border border-emerald-500/30 shadow-xl">
             <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
-              {gameMode === 'KNOCKOUT' ? 'Skor Duel 1v1 Kamu' : 'Skor Kamu Saat Ini'}
+              {isDuelist ? 'Skor Duel 1v1 Kamu' : 'Skor Kamu Saat Ini'}
             </p>
             <p className="text-emerald-400 text-4xl font-black font-mono mt-1">
-              {gameMode === 'KNOCKOUT' ? myDuelScore : me?.score ?? 0}{' '}
+              {isDuelist ? myDuelScore : me?.score ?? 0}{' '}
               <span className="text-base text-slate-400 font-semibold">pts</span>
             </p>
           </div>
@@ -514,10 +488,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
           <div className="glass-panel rounded-3xl p-5 border border-white/5 shadow-xl">
             <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">
-              {gameMode === 'KNOCKOUT' ? 'Skor Duel Kamu' : 'Skor Kamu'}
+              {isDuelist ? 'Skor Duel Kamu' : 'Skor Kamu'}
             </p>
             <p className="text-white text-3xl font-black font-mono mt-1">
-              {gameMode === 'KNOCKOUT' ? myDuelScore : me?.score ?? 0}{' '}
+              {isDuelist ? myDuelScore : me?.score ?? 0}{' '}
               <span className="text-sm text-slate-500 font-semibold">pts</span>
             </p>
           </div>
@@ -919,72 +893,16 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         </div>
       </div>
 
-      {/* Center: Ready Check Card when buzzer is disabled, or Buzz Dome Button when active */}
-      {game.buzz_state === 'DISABLED' && !isCountingDown ? (
-        <div className="my-auto py-6 flex flex-col items-center justify-center relative z-10 max-w-sm mx-auto w-full space-y-4">
-          <div className="w-full glass-panel rounded-3xl p-5 sm:p-6 border border-white/10 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
-              <CheckIcon size={28} />
-            </div>
-
-            <div>
-              <h3 className="text-white font-black text-xl tracking-tight">Kesiapan Pemain</h3>
-              <p className="text-slate-400 text-xs mt-1">
-                Tandai bahwa kamu sudah siap sebelum host memutar lagu!
-              </p>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-white/5">
-              <span className={`w-2.5 h-2.5 rounded-full ${isMeReady ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-              <span className="text-xs font-bold text-slate-300">
-                Pemain Siap: <strong className="text-emerald-400 font-mono font-black">{readyCount}</strong> / {totalPlayers}
-              </span>
-            </div>
-
-            {!isMeReady ? (
-              <button
-                type="button"
-                onClick={handleToggleReady}
-                disabled={isTogglingReady}
-                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500 hover:brightness-110 text-slate-950 font-black text-base shadow-xl shadow-emerald-500/30 border-2 border-white/40 flex items-center justify-center gap-2.5 transition-all active:scale-95 animate-pulse"
-              >
-                <CheckIcon size={20} />
-                <span>SAYA SIAP BERMAIN!</span>
-              </button>
-            ) : (
-              <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 space-y-2">
-                <div className="flex items-center justify-center gap-2 text-emerald-300 font-black text-sm uppercase tracking-wider">
-                  <CheckIcon size={18} />
-                  <span>Kamu Sudah Siap!</span>
-                </div>
-                <p className="text-slate-400 text-xs">
-                  {readyCount >= totalPlayers
-                    ? 'Semua pemain sudah siap! Lagu akan segera diputar.'
-                    : `Menunggu pemain lain (${readyCount}/${totalPlayers} siap)...`}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleToggleReady}
-                  disabled={isTogglingReady}
-                  className="text-xs text-slate-400 hover:text-slate-200 underline font-semibold transition-colors pt-1"
-                >
-                  Batal Siap
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="my-auto py-8 flex items-center justify-center relative z-10">
-          <BuzzButton
-            buzzState={isCountingDown ? 'DISABLED' : game.buzz_state}
-            isWinner={isWinner}
-            onBuzz={handleBuzz}
-            isExcluded={isExcluded}
-            isBuzzing={isBuzzing}
-          />
-        </div>
-      )}
+      {/* Center: Buzz Dome Button */}
+      <div className="my-auto py-8 flex items-center justify-center relative z-10">
+        <BuzzButton
+          buzzState={isCountingDown ? 'DISABLED' : game.buzz_state}
+          isWinner={isWinner}
+          onBuzz={handleBuzz}
+          isExcluded={isExcluded}
+          isBuzzing={isBuzzing}
+        />
+      </div>
 
       {/* Bottom: Mini Podium Roster or Duel Opponent summary */}
       <div className="glass-panel rounded-3xl p-3.5 border border-white/10 relative z-10 space-y-2">
