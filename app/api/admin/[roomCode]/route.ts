@@ -121,6 +121,26 @@ export async function PATCH(
         break
       }
 
+      case 'UPDATE_PLAYER_SCORE': {
+        if (!payload?.playerId || typeof payload?.score !== 'number') {
+          return NextResponse.json({ error: 'playerId and numeric score required' }, { status: 400 })
+        }
+        await supabase
+          .from('players')
+          .update({ score: Math.max(0, payload.score) })
+          .eq('id', payload.playerId)
+          .eq('game_id', game.id)
+        break
+      }
+
+      case 'RESET_ALL_SCORES': {
+        await supabase
+          .from('players')
+          .update({ score: 0, excluded_attempt: null })
+          .eq('game_id', game.id)
+        break
+      }
+
       default:
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })
     }
@@ -128,6 +148,65 @@ export async function PATCH(
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('PATCH /api/admin/[roomCode] error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+/**
+ * DELETE /api/admin/[roomCode]
+ * Deletes the game room and all cascading data from Supabase.
+ * Headers: x-host-password: <password>
+ */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ roomCode: string }> }
+) {
+  try {
+    const { roomCode } = await params
+    const hostPassword = req.headers.get('x-host-password')
+
+    if (!hostPassword) {
+      return NextResponse.json({ error: 'Host password required' }, { status: 401 })
+    }
+
+    const supabase = getSupabaseServerClient()
+
+    // Get game + verify host
+    const { data: game } = await supabase
+      .from('games')
+      .select('id, host_secret')
+      .eq('room_code', roomCode.toUpperCase())
+      .single()
+
+    if (!game) {
+      return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+    }
+
+    const valid = await bcrypt.compare(hostPassword, game.host_secret)
+    if (!valid) {
+      return NextResponse.json({ error: 'Invalid host password' }, { status: 403 })
+    }
+
+    // Step 1: Notify players by setting status to FINAL_RESULT
+    await supabase
+      .from('games')
+      .update({ status: 'FINAL_RESULT', buzz_state: 'DISABLED' })
+      .eq('id', game.id)
+
+    // Step 2: Delete game row (CASCADE will remove players, attempts, score_configs)
+    const { error: delErr } = await supabase
+      .from('games')
+      .delete()
+      .eq('id', game.id)
+
+    if (delErr) {
+      console.error('Error deleting game:', delErr)
+      return NextResponse.json({ error: 'Failed to delete game' }, { status: 500 })
+    }
+
+    return NextResponse.json({ ok: true, message: 'Game room deleted' })
+  } catch (err) {
+    console.error('DELETE /api/admin/[roomCode] error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

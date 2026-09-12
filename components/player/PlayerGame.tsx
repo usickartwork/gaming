@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { useGameState } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { usePresence } from '@/lib/hooks/usePresence'
-import { playDingSound } from '@/lib/audio'
+import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
 import { BuzzButton } from './BuzzButton'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
@@ -18,6 +19,7 @@ interface PlayerGameProps {
 }
 
 export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameProps) {
+  const router = useRouter()
   const game = useGameState(initialGame.id, initialGame)
   const players = usePlayers(initialGame.id, initialPlayers)
 
@@ -26,6 +28,36 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const [localWinnerName, setLocalWinnerName] = useState<string | null>(null)
   const [revealedSong, setRevealedSong] = useState<{ title: string; artist: string } | null>(null)
   const [loadingSong, setLoadingSong] = useState(false)
+  const [feedbackAnim, setFeedbackAnim] = useState<'none' | 'correct' | 'wrong'>('none')
+
+  const prevBuzzStateRef = useRef(game.buzz_state)
+  const prevAttemptRef = useRef(game.current_attempt)
+
+  // Real-time Sound & Visual Feedback for Correct vs Wrong answers
+  useEffect(() => {
+    // When game transitions to RESULT (Answer evaluated as CORRECT!)
+    if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
+      playCorrectFanfareSound()
+      setFeedbackAnim('correct')
+      const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+      return () => clearTimeout(t)
+    }
+
+    // When attempt increases after locked/answering state (Answer evaluated as WRONG!)
+    if (
+      game.buzz_state === 'READY' &&
+      (prevBuzzStateRef.current === 'LOCKED' || prevBuzzStateRef.current === 'ANSWERING') &&
+      game.current_attempt > prevAttemptRef.current
+    ) {
+      playWrongSound()
+      setFeedbackAnim('wrong')
+      const t = setTimeout(() => setFeedbackAnim('none'), 1200)
+      return () => clearTimeout(t)
+    }
+
+    prevBuzzStateRef.current = game.buzz_state
+    prevAttemptRef.current = game.current_attempt
+  }, [game.buzz_state, game.current_attempt])
 
   // Fetch revealed song details when game enters RESULT state
   useEffect(() => {
@@ -99,6 +131,50 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         players={players}
         isHost={false}
       />
+    )
+  }
+
+  // ── FINAL_RESULT state (Game ended / room deleted) ─────────────
+  if (game.status === 'FINAL_RESULT') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
+        <div className="absolute inset-0 bg-amber-500/10 blur-[120px] pointer-events-none" />
+
+        <div className="w-full max-w-sm space-y-6 relative z-10 py-6">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-400/20 to-amber-600/10 border-2 border-amber-400/40 flex items-center justify-center text-amber-400 mx-auto shadow-2xl shadow-amber-500/30 animate-bounce">
+            <TrophyIcon size={40} />
+          </div>
+
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-2 shadow-lg shadow-amber-400/30">
+              PERMAINAN SELESAI
+            </div>
+            <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">
+              KLASEMEN AKHIR
+            </h1>
+            <p className="text-slate-400 text-xs mt-1">
+              Host telah menyelesaikan sesi permainan. Terima kasih sudah bermain!
+            </p>
+          </div>
+
+          <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl">
+            <Leaderboard players={players} highlightId={session.playerId} />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem(`cg-session-${game.room_code}`)
+              }
+              router.push('/')
+            }}
+            className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 font-black text-base shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.98]"
+          >
+            Kembali ke Beranda
+          </button>
+        </div>
+      </div>
     )
   }
 
@@ -225,7 +301,22 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   // ── Active game: DISABLED or READY ─────────────────────────────
   return (
-    <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 select-none relative overflow-hidden">
+    <div
+      className={`min-h-screen flex flex-col justify-between p-4 sm:p-6 select-none relative overflow-hidden transition-all ${
+        feedbackAnim === 'wrong'
+          ? 'animate-shake animate-flash-red'
+          : feedbackAnim === 'correct'
+          ? 'animate-flash-green'
+          : ''
+      }`}
+    >
+      {/* Wrong Answer temporary alert banner */}
+      {feedbackAnim === 'wrong' && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-rose-600/90 border border-rose-400/50 text-white font-black text-xs uppercase tracking-wider shadow-2xl shadow-rose-600/40 animate-bounce">
+          Jawaban Salah! Kesempatan Dibuka Kembali
+        </div>
+      )}
+
       {/* Top Header Panel */}
       <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-lg relative z-10">
         <div className="flex items-center justify-between">

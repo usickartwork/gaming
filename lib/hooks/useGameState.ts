@@ -29,6 +29,18 @@ export function useGameState(gameId: string, initialGame: Game): Game {
           setGame(payload.new as unknown as Game)
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'games',
+          filter: `id=eq.${gameId}`,
+        },
+        () => {
+          setGame((prev) => ({ ...prev, status: 'FINAL_RESULT', buzz_state: 'DISABLED' }))
+        }
+      )
       .subscribe()
 
     channelRef.current = channel

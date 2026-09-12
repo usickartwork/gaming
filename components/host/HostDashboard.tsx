@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useGameState } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
-import { playDingSound } from '@/lib/audio'
+import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
 import {
   MicIcon,
   MusicIcon,
   UsersIcon,
   TrophyIcon,
   ArrowRightIcon,
+  TrashIcon,
 } from '@/components/shared/Icons'
 import { AudioPlayer } from './AudioPlayer'
 import { BuzzControlPanel } from './BuzzControlPanel'
@@ -32,10 +34,13 @@ export function HostDashboard({
   songs,
   hostSession,
 }: HostDashboardProps) {
+  const router = useRouter()
   const game = useGameState(initialGame.id, initialGame)
   const players = usePlayers(initialGame.id, initialPlayers)
   const [isLoading, setIsLoading] = useState(false)
   const [tab, setTab] = useState<'players' | 'leaderboard'>('players')
+  const [confirmEndGame, setConfirmEndGame] = useState(false)
+  const [feedbackAnim, setFeedbackAnim] = useState<'none' | 'correct' | 'wrong'>('none')
 
   const currentSong = songs.find((s) => s.id === game.current_song_id) ?? null
   const buzzWinner = players.find((p) => p.id === game.buzz_winner_id) ?? null
@@ -69,9 +74,50 @@ export function HostDashboard({
     [game.room_code, hostSession.hostPassword]
   )
 
+  const handleUpdateScore = useCallback(
+    async (playerId: string, score: number) => {
+      await hostAction('UPDATE_PLAYER_SCORE', { playerId, score })
+    },
+    [hostAction]
+  )
+
+  const handleResetAllScores = useCallback(async () => {
+    await hostAction('RESET_ALL_SCORES')
+  }, [hostAction])
+
+  const handleEndGame = async () => {
+    setIsLoading(true)
+    try {
+      await fetch(`/api/admin/${game.room_code}`, {
+        method: 'DELETE',
+        headers: {
+          'x-host-password': hostSession.hostPassword,
+        },
+      })
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(`cg-host-${game.room_code}`)
+      }
+      router.push('/')
+    } catch (err) {
+      console.error('Error ending game:', err)
+    } finally {
+      setIsLoading(false)
+      setConfirmEndGame(false)
+    }
+  }
+
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
       setIsLoading(true)
+      if (result === 'CORRECT') {
+        playCorrectFanfareSound()
+        setFeedbackAnim('correct')
+        setTimeout(() => setFeedbackAnim('none'), 2000)
+      } else {
+        playWrongSound()
+        setFeedbackAnim('wrong')
+        setTimeout(() => setFeedbackAnim('none'), 1200)
+      }
       try {
         await fetch(`/api/admin/${game.room_code}/answer`, {
           method: 'POST',
@@ -104,7 +150,15 @@ export function HostDashboard({
 
   // ── Active Game Dashboard ─────────────────────────────────────────
   return (
-    <div className="min-h-screen p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
+    <div
+      className={`min-h-screen p-4 sm:p-6 max-w-7xl mx-auto space-y-5 transition-all ${
+        feedbackAnim === 'wrong'
+          ? 'animate-shake animate-flash-red'
+          : feedbackAnim === 'correct'
+          ? 'animate-flash-green'
+          : ''
+      }`}
+    >
       {/* Top Command Bar */}
       <div className="glass-panel rounded-3xl p-5 border border-white/10 flex flex-wrap items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-4">
@@ -124,25 +178,76 @@ export function HostDashboard({
           </div>
         </div>
 
-        {/* Round switch pills */}
-        <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-white/10 shrink-0">
-          {(['GUESS', 'LYRICS'] as RoundType[]).map((r) => (
-            <button
-              key={r}
-              onClick={() => hostAction('SET_ROUND', { round: r })}
-              disabled={isLoading}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
-                game.current_round === r
-                  ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {r === 'GUESS' ? <MusicIcon size={14} /> : <MicIcon size={14} />}
-              <span>{r === 'GUESS' ? 'Round 1: Tebak Lagu' : 'Round 2: Sambung Lirik'}</span>
-            </button>
-          ))}
+        {/* Right side controls: Round switch pills + Selesaikan Game */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-white/10 shrink-0">
+            {(['GUESS', 'LYRICS'] as RoundType[]).map((r) => (
+              <button
+                key={r}
+                onClick={() => hostAction('SET_ROUND', { round: r })}
+                disabled={isLoading}
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+                  game.current_round === r
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {r === 'GUESS' ? <MusicIcon size={14} /> : <MicIcon size={14} />}
+                <span>{r === 'GUESS' ? 'Round 1: Tebak Lagu' : 'Round 2: Sambung Lirik'}</span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setConfirmEndGame(true)}
+            disabled={isLoading}
+            className="px-4 py-2.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs sm:text-sm font-bold transition-all active:scale-95 flex items-center gap-2"
+          >
+            <TrashIcon size={14} />
+            <span>Selesaikan Permainan</span>
+          </button>
         </div>
       </div>
+
+      {/* Confirmation Modal: End Game & Delete Room */}
+      {confirmEndGame && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-panel rounded-3xl p-6 sm:p-8 max-w-md w-full border border-rose-500/40 bg-slate-950 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto shadow-lg shadow-rose-500/20">
+              <TrashIcon size={26} />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h2 className="text-white text-xl sm:text-2xl font-black tracking-tight">
+                Selesaikan Permainan?
+              </h2>
+              <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
+                Tindakan ini akan mengakhiri sesi untuk seluruh pemain dan menghapus seluruh data room, riwayat attempt, serta pemain dari Supabase secara permanen.
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmEndGame(false)}
+                disabled={isLoading}
+                className="flex-1 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-sm border border-white/10 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleEndGame}
+                disabled={isLoading}
+                className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm shadow-lg shadow-rose-600/30 transition-all active:scale-95"
+              >
+                {isLoading ? 'Menghapus...' : 'Ya, Selesaikan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Command Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -220,7 +325,12 @@ export function HostDashboard({
             </div>
             <div className="p-4">
               {tab === 'players' ? (
-                <PlayerListPanel players={players} />
+                <PlayerListPanel
+                  players={players}
+                  onUpdateScore={handleUpdateScore}
+                  onResetAllScores={handleResetAllScores}
+                  isLoading={isLoading}
+                />
               ) : (
                 <Leaderboard players={players} />
               )}

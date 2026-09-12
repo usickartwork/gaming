@@ -29,6 +29,36 @@
   100% { height: 12px; }
 }
 
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-14px); }
+  40% { transform: translateX(14px); }
+  60% { transform: translateX(-8px); }
+  80% { transform: translateX(8px); }
+}
+
+@keyframes flash-green {
+  0% { box-shadow: inset 0 0 0 6px rgba(16, 185, 129, 0.8), 0 0 80px rgba(16, 185, 129, 0.5); }
+  100% { box-shadow: inset 0 0 0 0 rgba(16, 185, 129, 0), 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+@keyframes flash-red {
+  0% { box-shadow: inset 0 0 0 6px rgba(244, 63, 94, 0.8), 0 0 80px rgba(244, 63, 94, 0.5); }
+  100% { box-shadow: inset 0 0 0 0 rgba(244, 63, 94, 0), 0 0 0 rgba(244, 63, 94, 0); }
+}
+
+.animate-shake {
+  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.animate-flash-green {
+  animation: flash-green 1.2s ease-out both;
+}
+
+.animate-flash-red {
+  animation: flash-red 1s ease-out both;
+}
+
 body {
   background: radial-gradient(circle at 50% -20%, #151c2e 0%, #08090d 60%, #030406 100%);
   background-attachment: fixed;
