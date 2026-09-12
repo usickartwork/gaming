@@ -20,12 +20,12 @@ const ATTEMPT_POINTS = [
   { attempt: 3, correct: 5, wrong: 0 },
 ]
 
-const BUZZ_STATE_LABELS: Record<BuzzState, { label: string; color: string }> = {
-  DISABLED: { label: '⚫ DISABLED', color: 'text-white/40' },
-  READY:    { label: '🟢 READY', color: 'text-green-400' },
-  LOCKED:   { label: '🔴 LOCKED', color: 'text-red-400' },
-  ANSWERING:{ label: '🎤 ANSWERING', color: 'text-yellow-400' },
-  RESULT:   { label: '✅ RESULT', color: 'text-blue-400' },
+const BUZZ_STATE_LABELS: Record<BuzzState, { label: string; badgeClass: string }> = {
+  DISABLED: { label: 'Buzzer Dikunci', badgeClass: 'bg-slate-800 text-slate-400 border-slate-700' },
+  READY:    { label: 'Buzzer Siap Dipencet', badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse' },
+  LOCKED:   { label: 'Pemain Memencet', badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40' },
+  ANSWERING:{ label: 'Sedang Menjawab', badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40' },
+  RESULT:   { label: 'Hasil Dinilai', badgeClass: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' },
 }
 
 export function BuzzControlPanel({
@@ -44,72 +44,100 @@ export function BuzzControlPanel({
 
   return (
     <div className="space-y-4">
-      {/* State display */}
-      <div className="bg-white/5 rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-white/60 text-sm uppercase tracking-wider">Buzz State</span>
-          <span className={`font-bold text-lg ${stateInfo.color}`}>{stateInfo.label}</span>
+      {/* State controller card */}
+      <div className="glass-panel rounded-3xl p-5 border border-white/10 shadow-xl space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Status Buzzer HP</span>
+          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${stateInfo.badgeClass}`}>
+            {stateInfo.label}
+          </span>
         </div>
 
+        {/* Master Buzzer Action Buttons */}
         <div className="flex gap-2">
           <button
             onClick={onEnableBuzz}
             disabled={buzzState === 'READY' || isLoading}
-            className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all active:scale-95 text-sm"
+            className="flex-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black py-3.5 rounded-2xl transition-all shadow-md shadow-emerald-500/15 active:scale-95 text-xs sm:text-sm flex items-center justify-center gap-1.5"
           >
-            ENABLE BUZZ
+            <span>🟢</span> BUKA BUZZER
           </button>
           <button
             onClick={onDisableBuzz}
             disabled={buzzState === 'DISABLED' || isLoading}
-            className="flex-1 bg-gray-600 hover:bg-gray-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all active:scale-95 text-sm"
+            className="flex-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 hover:text-white font-bold py-3.5 rounded-2xl border border-white/5 transition-all active:scale-95 text-xs sm:text-sm flex items-center justify-center gap-1.5"
           >
-            DISABLE
+            <span>🔒</span> KUNCI
           </button>
           <button
             onClick={onResetBuzz}
             disabled={isLoading}
-            className="bg-white/10 hover:bg-white/20 text-white font-bold py-3 px-4 rounded-xl transition-all active:scale-95 text-sm"
+            className="bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-bold py-3.5 px-4 rounded-2xl border border-white/10 transition-all active:scale-95 text-xs sm:text-sm"
+            title="Reset ulang ke READY"
           >
-            RESET
+            🔄
           </button>
         </div>
       </div>
 
-      {/* First buzz winner */}
+      {/* First buzz spotlight */}
       {buzzWinner ? (
-        <div className="bg-red-950 border border-red-500 rounded-2xl p-4">
-          <p className="text-red-300 text-xs uppercase tracking-wider mb-1">First Buzz</p>
-          <p className="text-white text-3xl font-black">🔴 {buzzWinner.name.toUpperCase()}</p>
-          <p className="text-white/40 text-xs mt-1">Score: {buzzWinner.score}</p>
-
-          <div className="mt-3 text-xs text-white/50">
-            Attempt #{currentAttempt} — Correct: +{pts.correct} | Wrong: {pts.wrong === 0 ? '0' : pts.wrong}
+        <div className="glass-panel rounded-3xl p-6 border border-rose-500/50 bg-gradient-to-b from-rose-950/40 via-slate-900/90 to-slate-900/90 shadow-2xl shadow-rose-950/50 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-xs font-extrabold uppercase tracking-widest border border-rose-500/30 animate-pulse">
+              ⚡ FIRST TO BUZZ
+            </span>
+            <span className="text-xs text-slate-400 font-medium">
+              Attempt <strong className="text-white font-bold">#{currentAttempt}</strong>
+            </span>
           </div>
 
-          {/* Answer buttons */}
-          <div className="flex gap-3 mt-4">
+          <div>
+            <p className="text-white text-3xl sm:text-4xl font-black tracking-tight flex items-center gap-2">
+              <span>🎤</span> {buzzWinner.name.toUpperCase()}
+            </p>
+            <p className="text-slate-400 text-xs mt-1">
+              Skor saat ini: <span className="text-amber-400 font-bold">{buzzWinner.score} poin</span>
+            </p>
+          </div>
+
+          <div className="bg-slate-900/90 border border-white/5 rounded-2xl p-3 text-xs flex justify-around text-slate-300 font-medium">
+            <span>Benar: <strong className="text-emerald-400">+{pts.correct} poin</strong></span>
+            <span className="text-slate-600">|</span>
+            <span>Salah: <strong className="text-rose-400">{pts.wrong} poin</strong></span>
+          </div>
+
+          {/* Answer Judgement Buttons */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
             <button
               onClick={onCorrect}
               disabled={isLoading}
-              className="flex-1 bg-green-500 hover:bg-green-400 disabled:opacity-40 text-white text-xl font-black py-4 rounded-xl transition-all active:scale-95"
+              className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 py-4 px-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-emerald-500/20 flex flex-col items-center justify-center font-black"
             >
-              ✅ CORRECT
-              <div className="text-sm font-normal">+{pts.correct} pts</div>
+              <span className="text-xl">✅ BENAR</span>
+              <span className="text-xs opacity-80 font-bold">+{pts.correct} POIN</span>
             </button>
             <button
               onClick={onWrong}
               disabled={isLoading}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white text-xl font-black py-4 rounded-xl transition-all active:scale-95"
+              className="bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 disabled:opacity-40 text-white py-4 px-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-rose-600/20 flex flex-col items-center justify-center font-black"
             >
-              ❌ WRONG
-              <div className="text-sm font-normal">{pts.wrong === 0 ? '0' : pts.wrong} pts</div>
+              <span className="text-xl">❌ SALAH</span>
+              <span className="text-xs opacity-80 font-bold">{pts.wrong} POIN</span>
             </button>
           </div>
         </div>
       ) : (
-        <div className="bg-white/5 rounded-2xl p-4 text-center text-white/40">
-          {buzzState === 'READY' ? 'Waiting for a buzz...' : 'Enable buzz to start'}
+        <div className="glass-panel rounded-3xl p-8 border border-white/5 text-center space-y-2">
+          <span className="text-3xl block">
+            {buzzState === 'READY' ? '⚡' : '⏸️'}
+          </span>
+          <p className="text-slate-300 font-bold text-sm">
+            {buzzState === 'READY' ? 'Buzzer Aktif: Menunggu pemain menekan!' : 'Buzzer belum dibuka oleh host.'}
+          </p>
+          <p className="text-slate-500 text-xs">
+            {buzzState === 'READY' ? 'Siapa cepat dia dapat giliran menjawab.' : 'Klik "BUKA BUZZER" di atas jika lagu sudah siap ditebak.'}
+          </p>
         </div>
       )}
     </div>

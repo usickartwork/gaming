@@ -97,41 +97,74 @@ export function HostDashboard({
 
   // ── Active Game Dashboard ─────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-black p-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-white font-black text-xl">CG GUESS THE SONG</h1>
-          <p className="text-purple-400 text-sm">Room: {game.room_code} · {game.status}</p>
+    <div className="min-h-screen p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
+      {/* Top Command Bar */}
+      <div className="glass-panel rounded-3xl p-5 border border-white/10 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/20 shrink-0">
+            🎙️
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-white font-black text-xl tracking-tight">CG GUESS THE SONG</h1>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                HOST CONSOLE
+              </span>
+            </div>
+            <p className="text-slate-400 text-xs mt-0.5">
+              Room Code: <span className="text-white font-mono font-bold tracking-widest text-sm bg-white/10 px-2 py-0.5 rounded-md ml-1">{game.room_code}</span>
+            </p>
+          </div>
         </div>
-        <div className="bg-white/10 rounded-xl px-3 py-2 text-center">
-          <p className="text-white/50 text-xs">Round</p>
-          <p className="text-white font-bold">{game.current_round}</p>
+
+        {/* Round switch pills */}
+        <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-white/10 shrink-0">
+          {(['GUESS', 'LYRICS'] as RoundType[]).map((r) => (
+            <button
+              key={r}
+              onClick={() => hostAction('SET_ROUND', { round: r })}
+              disabled={isLoading}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                game.current_round === r
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {r === 'GUESS' ? '🎵 Round 1: Guess The Song' : '🎤 Round 2: Sambung Lirik'}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Round switcher */}
-      <div className="flex gap-2 mb-4">
-        {(['GUESS', 'LYRICS'] as RoundType[]).map((r) => (
-          <button
-            key={r}
-            onClick={() => hostAction('SET_ROUND', { round: r })}
-            disabled={isLoading}
-            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
-              game.current_round === r
-                ? 'bg-purple-600 text-white'
-                : 'bg-white/10 text-white/60 hover:bg-white/20'
-            }`}
-          >
-            {r === 'GUESS' ? '🎵 Round 1' : '🎤 Round 2'}
-          </button>
-        ))}
-      </div>
+      {/* Main Command Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Left column: Music & Tracklist (7 cols) */}
+        <div className="lg:col-span-7 space-y-5">
+          {/* Audio Player Deck */}
+          <AudioPlayer
+            audioUrl={currentSong?.audio_url ?? null}
+            songTitle={currentSong?.title ?? null}
+            songArtist={currentSong?.artist ?? null}
+          />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Left column */}
-        <div className="space-y-4">
-          {/* Song Selector */}
+          {/* Next Song Action Banner */}
+          {game.buzz_state === 'RESULT' && (
+            <div className="glass-panel rounded-3xl p-5 border border-emerald-500/40 bg-emerald-500/10 shadow-lg shadow-emerald-950/40 flex items-center justify-between gap-4 animate-pulse">
+              <div>
+                <p className="text-emerald-300 font-bold text-sm">Soal telah terjawab!</p>
+                <p className="text-slate-300 text-xs">Poin sudah masuk ke leaderboard.</p>
+              </div>
+              <button
+                onClick={() => hostAction('NEXT_SONG')}
+                disabled={isLoading}
+                className="bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black px-6 py-3 rounded-2xl text-sm transition-all active:scale-95 shadow-lg shadow-emerald-400/20 shrink-0"
+              >
+                LANJUT LAGU BERIKUTNYA ➔
+              </button>
+            </div>
+          )}
+
+          {/* Tracklist Selector */}
           <SongSelector
             songs={songs}
             currentSongId={game.current_song_id}
@@ -139,29 +172,11 @@ export function HostDashboard({
             onSelectSong={(song) => hostAction('SET_CURRENT_SONG', { songId: song.id })}
             onChangeRound={(round) => hostAction('SET_ROUND', { round })}
           />
-
-          {/* Audio Player */}
-          <AudioPlayer
-            audioUrl={currentSong?.audio_url ?? null}
-            songTitle={currentSong?.title ?? null}
-            songArtist={currentSong?.artist ?? null}
-          />
-
-          {/* Next Song button */}
-          {game.buzz_state === 'RESULT' && (
-            <button
-              onClick={() => hostAction('NEXT_SONG')}
-              disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all active:scale-95"
-            >
-              ▶▶ NEXT SONG
-            </button>
-          )}
         </div>
 
-        {/* Right column */}
-        <div className="space-y-4">
-          {/* Buzz Control */}
+        {/* Right column: Buzzer Controller & Leaderboard (5 cols) */}
+        <div className="lg:col-span-5 space-y-5">
+          {/* Buzzer Console */}
           <BuzzControlPanel
             buzzState={game.buzz_state}
             buzzWinner={buzzWinner}
@@ -174,18 +189,21 @@ export function HostDashboard({
             isLoading={isLoading}
           />
 
-          {/* Players / Leaderboard tabs */}
-          <div className="bg-white/5 rounded-2xl overflow-hidden">
-            <div className="flex">
+          {/* Players & Leaderboard Tabs */}
+          <div className="glass-panel rounded-3xl overflow-hidden border border-white/10 shadow-xl">
+            <div className="flex border-b border-white/5 bg-slate-900/60 p-1.5">
               {(['players', 'leaderboard'] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
-                  className={`flex-1 py-3 text-sm font-bold capitalize transition-all ${
-                    tab === t ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'
+                  className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                    tab === t
+                      ? 'bg-white/10 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  {t === 'players' ? '👥 Players' : '🏆 Leaderboard'}
+                  <span>{t === 'players' ? '👥' : '🏆'}</span>
+                  <span>{t === 'players' ? `Pemain (${players.length})` : 'Klasemen Skor'}</span>
                 </button>
               ))}
             </div>

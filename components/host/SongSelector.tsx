@@ -12,9 +12,9 @@ interface SongSelectorProps {
 }
 
 const DIFFICULTY_COLORS = {
-  EASY: 'text-green-400',
-  MEDIUM: 'text-yellow-400',
-  HARD: 'text-red-400',
+  EASY: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  MEDIUM: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  HARD: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
 }
 
 export function SongSelector({
@@ -34,58 +34,65 @@ export function SongSelector({
   )
 
   return (
-    <div className="bg-white/5 rounded-2xl p-4 space-y-3">
-      {/* Round selector */}
-      <div className="flex gap-2">
-        {(['GUESS', 'LYRICS'] as RoundType[]).map((r) => (
-          <button
-            key={r}
-            onClick={() => onChangeRound(r)}
-            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${
-              currentRound === r
-                ? 'bg-purple-600 text-white'
-                : 'bg-white/10 text-white/60 hover:bg-white/20'
-            }`}
-          >
-            {r === 'GUESS' ? '🎵 Guess The Song' : '🎤 Sambung Lirik'}
-          </button>
-        ))}
+    <div className="glass-panel rounded-3xl p-5 border border-white/10 space-y-4 shadow-xl">
+      <div className="flex items-center justify-between">
+        <h3 className="text-white font-bold text-sm flex items-center gap-2">
+          <span>📑</span> Daftar Lagu
+        </h3>
+        <span className="text-slate-400 text-xs font-semibold">
+          {filtered.length} Lagu Tersedia
+        </span>
       </div>
 
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Search song or artist..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full bg-white/10 text-white placeholder-white/30 rounded-xl px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
-      />
+      {/* Search Input */}
+      <div className="relative">
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm">
+          🔍
+        </span>
+        <input
+          type="text"
+          placeholder="Cari judul lagu atau nama penyanyi..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full bg-slate-900/90 text-white placeholder-slate-500 rounded-2xl pl-10 pr-4 py-2.5 text-xs sm:text-sm outline-none border border-slate-700/60 focus:border-emerald-500 transition-all"
+        />
+      </div>
 
       {/* Song list */}
-      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-        {filtered.map((song) => (
-          <button
-            key={song.id}
-            onClick={() => onSelectSong(song)}
-            className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
-              currentSongId === song.id
-                ? 'bg-purple-700 border border-purple-400 text-white'
-                : 'bg-white/5 hover:bg-white/10 text-white'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-semibold truncate">{song.title}</p>
-                <p className="text-xs text-white/60 truncate">{song.artist}</p>
+      <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+        {filtered.map((song) => {
+          const isSelected = currentSongId === song.id
+          return (
+            <button
+              key={song.id}
+              onClick={() => onSelectSong(song)}
+              className={`w-full text-left p-3.5 rounded-2xl transition-all border flex items-center justify-between gap-3 ${
+                isSelected
+                  ? 'bg-emerald-500/15 border-emerald-500/50 shadow-md shadow-emerald-950/40'
+                  : 'bg-slate-900/60 hover:bg-slate-800/80 border-white/5'
+              }`}
+            >
+              <div className="min-w-0 flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0 ${isSelected ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400'}`}>
+                  {isSelected ? '▶' : '🎵'}
+                </div>
+                <div className="truncate">
+                  <p className={`font-bold text-sm truncate ${isSelected ? 'text-emerald-300' : 'text-white'}`}>
+                    {song.title}
+                  </p>
+                  <p className="text-xs text-slate-400 truncate">{song.artist}</p>
+                </div>
               </div>
-              <span className={`text-xs font-bold shrink-0 ${DIFFICULTY_COLORS[song.difficulty]}`}>
+              <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${DIFFICULTY_COLORS[song.difficulty]}`}>
                 {song.difficulty}
               </span>
-            </div>
-          </button>
-        ))}
+            </button>
+          )
+        })}
         {filtered.length === 0 && (
-          <p className="text-white/40 text-center py-4 text-sm">No songs found</p>
+          <div className="text-center py-8 text-slate-500 text-xs">
+            Tidak ada lagu ditemukan. Coba cari kata kunci lain.
+          </div>
         )}
       </div>
     </div>

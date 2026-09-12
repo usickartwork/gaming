@@ -20,57 +20,82 @@ export function WaitingRoom({
   isStarting,
 }: WaitingRoomProps) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-black flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-hidden">
+      {/* Background ambient lighting */}
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-[140px] pointer-events-none" />
+
       {/* Header */}
-      <div className="text-center mb-8">
-        <p className="text-purple-400 text-sm font-semibold tracking-widest uppercase mb-2">
-          CG Guess The Song
-        </p>
-        <h1 className="text-white text-3xl font-bold mb-1">{gameName}</h1>
-        <div className="inline-block bg-white/10 border border-white/20 rounded-2xl px-6 py-3 mt-4">
-          <p className="text-purple-300 text-xs uppercase tracking-wider mb-1">Room Code</p>
-          <p className="text-white text-5xl font-black tracking-[0.2em]">{roomCode}</p>
+      <div className="text-center mb-6 relative z-10">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-3">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          Lobi Permainan
+        </div>
+        <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">{gameName}</h1>
+        
+        {/* Room Code Glowing Card */}
+        <div className="mt-5 inline-block glass-panel rounded-3xl p-5 sm:p-6 border border-emerald-500/30 shadow-xl shadow-emerald-950/40">
+          <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.2em] mb-1">
+            BAGIKAN KODE ROOM KE PEMAIN
+          </p>
+          <p className="text-white text-5xl sm:text-6xl font-black tracking-[0.25em] font-mono select-all">
+            {roomCode}
+          </p>
         </div>
       </div>
 
-      {/* Players list */}
-      <div className="w-full max-w-sm bg-white/5 rounded-2xl p-4 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-white font-semibold">Players Joined</h2>
-          <span className="text-purple-400 font-bold">{players.length}/20</span>
+      {/* Players list card */}
+      <div className="w-full max-w-md glass-panel rounded-3xl p-5 mb-6 border border-white/10 shadow-2xl relative z-10">
+        <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">👥</span>
+            <h2 className="text-white font-bold text-sm">Pemain Terhubung</h2>
+          </div>
+          <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-xs">
+            {players.length} / 20 Pemain
+          </span>
         </div>
-        <div className="space-y-2 max-h-64 overflow-y-auto">
-          {players.map((p) => (
-            <div key={p.id} className="flex items-center gap-2 py-1">
-              <span className="text-green-400 text-xs">●</span>
-              <span className="text-white">{p.name}</span>
+
+        <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+          {players.map((p, idx) => (
+            <div
+              key={p.id}
+              className="flex items-center gap-2.5 bg-slate-900/80 border border-white/5 px-3 py-2.5 rounded-xl text-left"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-sm shadow-emerald-400" />
+              <span className="text-slate-200 text-sm font-semibold truncate">
+                {p.name}
+              </span>
             </div>
           ))}
           {players.length === 0 && (
-            <p className="text-white/40 text-sm text-center py-4">
-              Waiting for players to join...
-            </p>
+            <div className="col-span-2 text-center py-8 text-slate-500 text-sm">
+              Menunggu pemain memasukkan kode room...
+            </div>
           )}
         </div>
       </div>
 
-      {/* Action */}
-      {isHost ? (
-        <button
-          onClick={onStartGame}
-          disabled={players.length === 0 || isStarting}
-          className="w-full max-w-sm bg-green-500 hover:bg-green-400 disabled:bg-white/20 disabled:cursor-not-allowed text-white text-xl font-bold py-5 rounded-2xl transition-all duration-200 active:scale-95"
-        >
-          {isStarting ? 'Starting...' : '▶ START GAME'}
-        </button>
-      ) : (
-        <div className="text-center">
-          <div className="animate-pulse">
-            <div className="w-4 h-4 bg-green-400 rounded-full mx-auto mb-3" />
+      {/* Action footer */}
+      <div className="w-full max-w-md relative z-10">
+        {isHost ? (
+          <button
+            onClick={onStartGame}
+            disabled={players.length === 0 || isStarting}
+            className="w-full bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 text-xl font-black py-4 rounded-2xl transition-all shadow-xl shadow-emerald-500/25 active:scale-95 flex items-center justify-center gap-2"
+          >
+            <span>▶</span>
+            <span>{isStarting ? 'MEMULAI GAME...' : 'MULAI GAME SEKARANG'}</span>
+          </button>
+        ) : (
+          <div className="glass-panel rounded-2xl p-4 text-center border border-white/5">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <p className="text-white text-sm font-bold">Menunggu Host Memulai Game</p>
+            </div>
+            <p className="text-slate-400 text-xs">Siap-siap pegang tombol buzzer!</p>
           </div>
-          <p className="text-white/60">Waiting for host to start...</p>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

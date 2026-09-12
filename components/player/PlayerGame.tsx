@@ -84,14 +84,33 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   // ── LOCKED: This player won ─────────────────────────────────────
   if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && isWinner) {
     return (
-      <div className="min-h-screen bg-green-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="animate-bounce text-8xl mb-6">🔴</div>
-        <h1 className="text-white text-4xl font-black mb-2">YOU BUZZED FIRST!</h1>
-        <p className="text-green-300 text-2xl font-bold mb-8">YOUR TURN 🎤</p>
-        <p className="text-green-400/60 text-sm">Jawab secara lisan</p>
-        <div className="mt-8 bg-white/10 rounded-2xl px-6 py-3">
-          <p className="text-green-300 text-sm">Score</p>
-          <p className="text-white text-3xl font-black">{me?.score ?? 0}</p>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-emerald-950/80 via-slate-950 to-black">
+        <div className="absolute inset-0 bg-emerald-500/10 blur-[120px] pointer-events-none" />
+
+        <div className="relative z-10 space-y-4 max-w-sm w-full">
+          <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-400/50 flex items-center justify-center text-5xl mx-auto shadow-2xl shadow-emerald-500/40 animate-bounce">
+            🎤
+          </div>
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-2 shadow-lg shadow-emerald-400/30">
+              ⚡ KAMU PALING CEPAT!
+            </div>
+            <h1 className="text-white text-4xl sm:text-5xl font-black tracking-tight leading-tight">
+              GILIRAN KAMU!
+            </h1>
+            <p className="text-emerald-300 text-lg font-bold mt-1">
+              Sebutkan jawabanmu secara lisan sekarang!
+            </p>
+          </div>
+
+          <div className="glass-panel rounded-3xl p-5 border border-emerald-500/30 shadow-xl">
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Skor Kamu Saat Ini</p>
+            <p className="text-emerald-400 text-4xl font-black font-mono mt-1">{me?.score ?? 0} <span className="text-base text-slate-400 font-semibold">pts</span></p>
+          </div>
+
+          <p className="text-slate-500 text-xs animate-pulse">
+            Host sedang mendengarkan jawabanmu...
+          </p>
         </div>
       </div>
     )
@@ -100,15 +119,31 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   // ── LOCKED: Someone else won ────────────────────────────────────
   if ((localWinner === false || game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
     return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 text-center">
-        <div className="text-8xl mb-6">🔒</div>
-        <h1 className="text-white text-3xl font-black mb-2">LOCKED</h1>
-        <p className="text-white/60 text-lg mb-8">
-          {localWinnerName || buzzWinnerPlayer?.name || 'Someone'} buzzed first.
-        </p>
-        <div className="bg-white/10 rounded-2xl px-6 py-3">
-          <p className="text-white/50 text-sm">Score kamu</p>
-          <p className="text-white text-3xl font-black">{me?.score ?? 0}</p>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
+        <div className="relative z-10 space-y-4 max-w-sm w-full">
+          <div className="w-20 h-20 rounded-3xl bg-slate-900 border border-white/10 flex items-center justify-center text-4xl mx-auto shadow-2xl">
+            🔒
+          </div>
+          <div>
+            <span className="px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-widest">
+              BUZZER TERKUNCI
+            </span>
+            <h1 className="text-white text-3xl font-black tracking-tight mt-3">
+              {localWinnerName || buzzWinnerPlayer?.name || 'Pemain Lain'}
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">
+              Memencet buzzer lebih dulu!
+            </p>
+          </div>
+
+          <div className="glass-panel rounded-3xl p-5 border border-white/5 shadow-xl">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Skor Kamu</p>
+            <p className="text-white text-3xl font-black font-mono mt-1">{me?.score ?? 0} <span className="text-sm text-slate-500 font-semibold">pts</span></p>
+          </div>
+
+          <p className="text-slate-500 text-xs">
+            Tunggu evaluasi host (Benar / Salah)...
+          </p>
         </div>
       </div>
     )
@@ -117,41 +152,67 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   // ── RESULT state ────────────────────────────────────────────────
   if (game.buzz_state === 'RESULT') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-black flex flex-col items-center justify-center p-6">
-        <h2 className="text-purple-300 text-xl font-bold mb-6 tracking-wider">🏆 LEADERBOARD</h2>
-        <div className="w-full max-w-sm">
-          <Leaderboard players={players} highlightId={session.playerId} />
+      <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 relative overflow-hidden">
+        <div className="w-full max-w-sm space-y-5 relative z-10">
+          <div className="text-center">
+            <span className="text-3xl">🏆</span>
+            <h2 className="text-white text-2xl font-black tracking-tight mt-1">KLASEMEN SKOR</h2>
+            <p className="text-slate-400 text-xs">Ronde {game.current_round === 'GUESS' ? '1' : '2'}</p>
+          </div>
+
+          <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl">
+            <Leaderboard players={players} highlightId={session.playerId} />
+          </div>
+
+          <div className="text-center py-2">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 border border-white/10 text-slate-400 text-xs animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              Menunggu Host Memutar Lagu Selanjutnya...
+            </div>
+          </div>
         </div>
-        <p className="text-white/30 text-sm mt-8 animate-pulse">Menunggu lagu berikutnya...</p>
       </div>
     )
   }
 
   // ── Active game: DISABLED or READY ─────────────────────────────
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-black flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4">
-        <div>
-          <p className="text-purple-400 text-xs uppercase tracking-wider">CG Guess The Song</p>
-          <p className="text-white font-bold">{session.playerName}</p>
+    <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 select-none relative overflow-hidden">
+      {/* Top Header Panel */}
+      <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-lg relative z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-lg font-black text-slate-950 shadow-md shadow-emerald-500/20 shrink-0">
+              {session.playerName.charAt(0).toUpperCase()}
+            </div>
+            <div className="truncate">
+              <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" />
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Controller Aktif</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-right pl-3">
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Skor Kamu</p>
+            <p className="text-emerald-400 text-2xl font-black font-mono leading-none mt-0.5">{me?.score ?? 0}</p>
+          </div>
         </div>
-        <div className="text-right">
-          <p className="text-white/50 text-xs">Score</p>
-          <p className="text-white text-2xl font-black">{me?.score ?? 0}</p>
+
+        {/* Round Pill indicator */}
+        <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
+          <span className="px-2.5 py-1 rounded-full bg-slate-900 border border-white/5 text-slate-300 font-bold text-[11px]">
+            {game.current_round === 'GUESS' ? '🎵 Tebak Judul Lagu' : '🎤 Sambung Lirik'}
+          </span>
+          <span className="text-slate-400 font-semibold text-[11px]">
+            Percobaan #{game.current_attempt}
+          </span>
         </div>
       </div>
 
-      {/* Round badge */}
-      <div className="text-center py-2">
-        <span className="bg-purple-800/50 text-purple-300 text-xs px-3 py-1 rounded-full">
-          {game.current_round === 'GUESS' ? '🎵 Guess The Song' : '🎤 Sambung Lirik'}
-          {' '}· Attempt #{game.current_attempt}
-        </span>
-      </div>
-
-      {/* Main buzz area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
+      {/* Center: The Iconic Buzz Dome Button */}
+      <div className="my-auto py-8 flex items-center justify-center relative z-10">
         <BuzzButton
           buzzState={game.buzz_state}
           isWinner={isWinner}
@@ -161,26 +222,34 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         />
       </div>
 
-      {/* Bottom: mini leaderboard */}
-      <div className="p-4 pb-8">
-        <p className="text-white/30 text-xs text-center uppercase tracking-wider mb-3">Top 3</p>
-        <div className="space-y-1">
+      {/* Bottom: Mini Podium Roster */}
+      <div className="glass-panel rounded-3xl p-3.5 border border-white/10 relative z-10 space-y-2">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Peringkat Sementara</span>
+          <span className="text-emerald-400 text-[10px] font-bold">Top 3</span>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
           {[...players]
             .sort((a, b) => b.score - a.score)
             .slice(0, 3)
-            .map((p, i) => (
-              <div
-                key={p.id}
-                className={`flex justify-between px-3 py-2 rounded-lg ${
-                  p.id === session.playerId ? 'bg-purple-800/50' : 'bg-white/5'
-                }`}
-              >
-                <span className="text-white/80 text-sm">
-                  {['🥇', '🥈', '🥉'][i]} {p.name}
-                </span>
-                <span className="text-white font-bold text-sm">{p.score}</span>
-              </div>
-            ))}
+            .map((p, i) => {
+              const isMe = p.id === session.playerId
+              return (
+                <div
+                  key={p.id}
+                  className={`p-2 rounded-xl text-center border transition-all truncate ${
+                    isMe
+                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                      : 'bg-slate-900/80 border-white/5 text-slate-300'
+                  }`}
+                >
+                  <p className="text-xs truncate font-bold">
+                    {['🥇', '🥈', '🥉'][i]} {p.name}
+                  </p>
+                  <p className="text-sm font-black font-mono mt-0.5">{p.score}</p>
+                </div>
+              )
+            })}
         </div>
       </div>
     </div>

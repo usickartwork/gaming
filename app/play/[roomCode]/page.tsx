@@ -47,19 +47,27 @@ export default function PlayPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-indigo-950 flex items-center justify-center">
-        <div className="text-white text-xl animate-pulse">Loading...</div>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-12 h-12 rounded-full border-4 border-emerald-400/20 border-t-emerald-400 animate-spin mb-4" />
+        <p className="text-slate-300 font-bold text-sm tracking-wider uppercase animate-pulse">Menghubungkan ke Room...</p>
       </div>
     )
   }
 
   if (error || !session || !initialGame) {
     return (
-      <div className="min-h-screen bg-indigo-950 flex items-center justify-center p-6">
-        <div className="text-center">
-          <p className="text-red-400 text-xl mb-4">{error || 'Session expired'}</p>
-          <button onClick={() => router.push('/')} className="text-purple-400 underline">
-            Back to home
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="glass-panel rounded-3xl p-8 border border-white/10 text-center max-w-sm w-full space-y-4">
+          <span className="text-4xl block">⚠️</span>
+          <div>
+            <p className="text-rose-400 text-lg font-bold">{error || 'Sesi Kadaluarsa'}</p>
+            <p className="text-slate-400 text-xs mt-1">Pastikan kode room benar atau silakan bergabung kembali.</p>
+          </div>
+          <button
+            onClick={() => router.push('/')}
+            className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-2xl text-sm transition-all border border-white/5"
+          >
+            Kembali ke Beranda
           </button>
         </div>
       </div>

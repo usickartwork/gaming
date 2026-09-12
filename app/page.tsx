@@ -79,110 +79,144 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-black flex flex-col items-center justify-center p-6">
-      {/* Logo */}
-      <div className="text-center mb-10">
-        <div className="text-6xl mb-4">🎵</div>
-        <h1 className="text-white text-4xl font-black tracking-tight">CG GUESS THE SONG</h1>
-        <p className="text-purple-400 mt-2">Real-time music quiz game</p>
+    <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-hidden">
+      {/* Background ambient lighting */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-10 right-10 w-72 h-72 bg-cyan-500/10 rounded-full blur-[100px] pointer-events-none" />
+
+      {/* Header Badge & Title */}
+      <div className="text-center mb-8 relative z-10">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-widest mb-4">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          Real-time Music Arena
+        </div>
+        <h1 className="text-white text-4xl sm:text-5xl font-black tracking-tight leading-tight">
+          GUESS THE SONG
+        </h1>
+        <p className="text-slate-400 text-sm sm:text-base mt-2 font-medium">
+          Mobile Controller · Live Host · Instant Buzzer
+        </p>
       </div>
 
-      {/* Tab switcher */}
-      <div className="flex bg-white/10 rounded-2xl p-1 mb-6 w-full max-w-sm">
-        <button
-          onClick={() => { setTab('join'); setError('') }}
-          className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
-            tab === 'join' ? 'bg-purple-600 text-white' : 'text-white/60'
-          }`}
-        >
-          🎮 Join Game
-        </button>
-        <button
-          onClick={() => { setTab('create'); setError('') }}
-          className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
-            tab === 'create' ? 'bg-purple-600 text-white' : 'text-white/60'
-          }`}
-        >
-          🏠 Host Game
-        </button>
-      </div>
+      {/* Main Glass Card */}
+      <div className="w-full max-w-md glass-panel rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/60 relative z-10 border border-white/10">
+        {/* Tab switcher */}
+        <div className="flex bg-slate-900/80 p-1.5 rounded-2xl mb-6 border border-white/5">
+          <button
+            type="button"
+            onClick={() => { setTab('join'); setError('') }}
+            className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 ${
+              tab === 'join'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20 font-extrabold'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>📱</span> Join Game
+          </button>
+          <button
+            type="button"
+            onClick={() => { setTab('create'); setError('') }}
+            className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 ${
+              tab === 'create'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20 font-extrabold'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <span>💻</span> Host Room
+          </button>
+        </div>
 
-      {/* Forms */}
-      <div className="w-full max-w-sm">
+        {/* Forms */}
         {tab === 'join' ? (
-          <form onSubmit={handleJoin} className="space-y-4">
+          <form onSubmit={handleJoin} className="space-y-5">
             <div>
-              <label className="text-white/60 text-xs uppercase tracking-wider block mb-2">
+              <label className="text-slate-300 text-xs font-bold uppercase tracking-wider block mb-2">
                 Room Code
               </label>
               <input
                 type="text"
                 value={roomCode}
                 onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                placeholder="e.g. A7K29"
+                placeholder="Contoh: A7K29"
                 maxLength={5}
-                className="w-full bg-white/10 text-white text-2xl font-black text-center tracking-[0.3em] placeholder-white/20 rounded-2xl px-4 py-4 outline-none focus:ring-2 focus:ring-purple-500 uppercase"
+                className="w-full bg-slate-900/90 text-white text-3xl font-black text-center tracking-[0.3em] placeholder-slate-600 rounded-2xl px-4 py-4 outline-none border border-slate-700/60 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 uppercase transition-all"
               />
             </div>
             <div>
-              <label className="text-white/60 text-xs uppercase tracking-wider block mb-2">
-                Your Name
+              <label className="text-slate-300 text-xs font-bold uppercase tracking-wider block mb-2">
+                Nama Pemain
               </label>
               <input
                 type="text"
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
-                placeholder="Enter your name"
+                placeholder="Masukkan nama kamu"
                 maxLength={20}
-                className="w-full bg-white/10 text-white text-lg text-center placeholder-white/20 rounded-2xl px-4 py-4 outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full bg-slate-900/90 text-white text-lg text-center placeholder-slate-600 rounded-2xl px-4 py-3.5 outline-none border border-slate-700/60 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 transition-all font-medium"
               />
             </div>
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold py-2.5 px-4 rounded-xl text-center">
+                {error}
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading || !roomCode || !playerName}
-              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xl font-black py-5 rounded-2xl transition-all active:scale-95"
+              className="w-full bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-lg font-black py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
             >
-              {loading ? 'Joining...' : 'JOIN GAME'}
+              {loading ? 'MENYAMBUNGKAN...' : 'MASUK KE ARENA ➔'}
             </button>
           </form>
         ) : (
-          <form onSubmit={handleCreate} className="space-y-4">
+          <form onSubmit={handleCreate} className="space-y-5">
             <div>
-              <label className="text-white/60 text-xs uppercase tracking-wider block mb-2">
-                Game Name
+              <label className="text-slate-300 text-xs font-bold uppercase tracking-wider block mb-2">
+                Nama Game / Room
               </label>
               <input
                 type="text"
                 value={gameName}
                 onChange={(e) => setGameName(e.target.value)}
-                placeholder="e.g. CG September 2026"
-                className="w-full bg-white/10 text-white placeholder-white/20 rounded-2xl px-4 py-4 outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="Contoh: CG September 2026"
+                className="w-full bg-slate-900/90 text-white placeholder-slate-600 rounded-2xl px-4 py-3.5 outline-none border border-slate-700/60 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 transition-all font-medium"
               />
             </div>
             <div>
-              <label className="text-white/60 text-xs uppercase tracking-wider block mb-2">
+              <label className="text-slate-300 text-xs font-bold uppercase tracking-wider block mb-2">
                 Host Password
               </label>
               <input
                 type="password"
                 value={hostPassword}
                 onChange={(e) => setHostPassword(e.target.value)}
-                placeholder="Password for host controls"
-                className="w-full bg-white/10 text-white placeholder-white/20 rounded-2xl px-4 py-4 outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder="Buat password untuk kendali host"
+                className="w-full bg-slate-900/90 text-white placeholder-slate-600 rounded-2xl px-4 py-3.5 outline-none border border-slate-700/60 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 transition-all font-medium"
               />
             </div>
-            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold py-2.5 px-4 rounded-xl text-center">
+                {error}
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading || !gameName || !hostPassword}
-              className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xl font-black py-5 rounded-2xl transition-all active:scale-95"
+              className="w-full bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-lg font-black py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
             >
-              {loading ? 'Creating...' : 'CREATE GAME'}
+              {loading ? 'MEMBUAT ROOM...' : 'BUAT GAME BARU ➔'}
             </button>
           </form>
         )}
       </div>
+
+      <p className="text-slate-500 text-xs text-center mt-8 font-medium">
+        Made for CG Multiplayer · Open in Mobile Browser
+      </p>
     </div>
   )
 }

@@ -51,14 +51,32 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist }: AudioPlayerProp
 
   if (!audioUrl) {
     return (
-      <div className="bg-white/5 rounded-2xl p-4 text-white/40 text-center">
-        No song selected
+      <div className="glass-panel rounded-3xl p-8 border border-white/10 text-center space-y-3">
+        <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-white/5 flex items-center justify-center text-2xl mx-auto text-slate-500">
+          🎵
+        </div>
+        <div>
+          <p className="text-white font-bold text-base">Belum Ada Lagu Dipilih</p>
+          <p className="text-slate-400 text-xs">Pilih salah satu lagu di daftar bawah untuk mulai memutar.</p>
+        </div>
       </div>
     )
   }
 
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current || !duration) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const pos = (e.clientX - rect.left) / rect.width
+    const target = pos * duration
+    audioRef.current.currentTime = target
+    setCurrentTime(target)
+  }
+
   return (
-    <div className="bg-white/5 rounded-2xl p-4 space-y-3">
+    <div className="glass-panel rounded-3xl p-6 border border-white/10 space-y-5 shadow-2xl relative overflow-hidden">
+      {/* Subtle ambient glow behind player */}
+      <div className={`absolute top-0 right-0 w-64 h-32 rounded-full blur-[80px] pointer-events-none transition-all duration-700 ${playing ? 'bg-emerald-500/20' : 'bg-transparent'}`} />
+
       {audioUrl && (
         <audio
           ref={audioRef}
@@ -70,45 +88,68 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist }: AudioPlayerProp
         />
       )}
 
-      <div>
-        <p className="text-white font-bold text-lg truncate">{songTitle}</p>
-        <p className="text-purple-300 text-sm">{songArtist}</p>
+      {/* Track info with animated vinyl/soundwave */}
+      <div className="flex items-center gap-4 relative z-10">
+        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 flex items-center justify-center text-2xl shadow-inner shrink-0 ${playing ? 'ring-2 ring-emerald-400' : ''}`}>
+          <span className={playing ? 'animate-spin' : ''}>💿</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+              {playing ? 'SEDANG MEMUTAR' : 'SIAP DIPUTAR'}
+            </span>
+            {playing && (
+              <div className="flex items-end gap-0.5 h-3">
+                <div className="w-1 bg-emerald-400 rounded-full animate-equalizer" style={{ animationDelay: '0ms' }} />
+                <div className="w-1 bg-emerald-400 rounded-full animate-equalizer" style={{ animationDelay: '200ms' }} />
+                <div className="w-1 bg-emerald-400 rounded-full animate-equalizer" style={{ animationDelay: '400ms' }} />
+              </div>
+            )}
+          </div>
+          <p className="text-white font-extrabold text-xl truncate mt-1">{songTitle}</p>
+          <p className="text-slate-400 text-sm truncate">{songArtist}</p>
+        </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="relative h-2 bg-white/10 rounded-full overflow-hidden">
+      {/* Interactive Progress bar with Seek */}
+      <div className="space-y-1.5 relative z-10">
         <div
-          className="absolute h-full bg-purple-500 rounded-full transition-all"
-          style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }}
-        />
-      </div>
-      <div className="flex justify-between text-xs text-white/40">
-        <span>{formatTime(currentTime)}</span>
-        <span>{formatTime(duration)}</span>
+          onClick={handleSeek}
+          className="relative h-2.5 bg-slate-900/90 rounded-full overflow-hidden cursor-pointer border border-white/5 group"
+        >
+          <div
+            className="absolute h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-100"
+            style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }}
+          />
+        </div>
+        <div className="flex justify-between text-xs font-mono text-slate-400 font-semibold">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
       </div>
 
-      {/* Controls */}
-      <div className="flex gap-3">
+      {/* Control Buttons Deck */}
+      <div className="flex gap-3 relative z-10">
         {!playing ? (
           <button
             onClick={handlePlay}
-            className="flex-1 bg-green-500 hover:bg-green-400 text-white font-bold py-3 rounded-xl transition-all active:scale-95"
+            className="flex-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/20 text-base flex items-center justify-center gap-2"
           >
-            ▶ PLAY
+            <span>▶</span> PUTAR LAGU (LAPTOP)
           </button>
         ) : (
           <button
             onClick={handlePause}
-            className="flex-1 bg-yellow-500 hover:bg-yellow-400 text-white font-bold py-3 rounded-xl transition-all active:scale-95"
+            className="flex-1 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-amber-500/20 text-base flex items-center justify-center gap-2"
           >
-            ⏸ PAUSE
+            <span>⏸</span> JEDA AUDIO
           </button>
         )}
         <button
           onClick={handleStop}
-          className="bg-white/10 hover:bg-white/20 text-white font-bold py-3 px-5 rounded-xl transition-all active:scale-95"
+          className="bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white font-bold py-4 px-6 rounded-2xl border border-white/10 transition-all active:scale-95 text-base flex items-center justify-center gap-2"
         >
-          ⏹ STOP
+          <span>⏹</span> STOP
         </button>
       </div>
     </div>
