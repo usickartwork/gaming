@@ -1,5 +1,6 @@
 'use client'
 
+import { UsersIcon, PlayIcon } from '@/components/shared/Icons'
 import type { Player } from '@/lib/types'
 
 interface WaitingRoomProps {
@@ -47,7 +48,7 @@ export function WaitingRoom({
       <div className="w-full max-w-md glass-panel rounded-3xl p-5 mb-6 border border-white/10 shadow-2xl relative z-10">
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
           <div className="flex items-center gap-2">
-            <span className="text-lg">👥</span>
+            <UsersIcon size={18} className="text-emerald-400" />
             <h2 className="text-white font-bold text-sm">Pemain Terhubung</h2>
           </div>
           <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-xs">
@@ -68,7 +69,7 @@ export function WaitingRoom({
             </div>
           ))}
           {players.length === 0 && (
-            <div className="col-span-2 text-center py-8 text-slate-500 text-sm">
+            <div className="col-span-2 text-center py-8 text-slate-500 text-xs">
               Menunggu pemain memasukkan kode room...
             </div>
           )}
@@ -81,9 +82,9 @@ export function WaitingRoom({
           <button
             onClick={onStartGame}
             disabled={players.length === 0 || isStarting}
-            className="w-full bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 text-xl font-black py-4 rounded-2xl transition-all shadow-xl shadow-emerald-500/25 active:scale-95 flex items-center justify-center gap-2"
+            className="w-full bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 text-base font-black py-4 rounded-2xl transition-all shadow-xl shadow-emerald-500/25 active:scale-95 flex items-center justify-center gap-2"
           >
-            <span>▶</span>
+            <PlayIcon size={14} />
             <span>{isStarting ? 'MEMULAI GAME...' : 'MULAI GAME SEKARANG'}</span>
           </button>
         ) : (

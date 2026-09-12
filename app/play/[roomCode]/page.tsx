@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { PlayerGame } from '@/components/player/PlayerGame'
+import { AlertIcon } from '@/components/shared/Icons'
 import type { Game, Player, PlayerSession } from '@/lib/types'
 
 export default function PlayPage() {
@@ -58,7 +59,9 @@ export default function PlayPage() {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="glass-panel rounded-3xl p-8 border border-white/10 text-center max-w-sm w-full space-y-4">
-          <span className="text-4xl block">⚠️</span>
+          <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto shadow-md">
+            <AlertIcon size={24} />
+          </div>
           <div>
             <p className="text-rose-400 text-lg font-bold">{error || 'Sesi Kadaluarsa'}</p>
             <p className="text-slate-400 text-xs mt-1">Pastikan kode room benar atau silakan bergabung kembali.</p>

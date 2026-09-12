@@ -8,6 +8,7 @@ import { playDingSound } from '@/lib/audio'
 import { BuzzButton } from './BuzzButton'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
+import { MicIcon, LockIcon, TrophyIcon, MusicIcon } from '@/components/shared/Icons'
 import type { Game, Player, PlayerSession } from '@/lib/types'
 
 interface PlayerGameProps {
@@ -88,12 +89,12 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         <div className="absolute inset-0 bg-emerald-500/10 blur-[120px] pointer-events-none" />
 
         <div className="relative z-10 space-y-4 max-w-sm w-full">
-          <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-400/50 flex items-center justify-center text-5xl mx-auto shadow-2xl shadow-emerald-500/40 animate-bounce">
-            🎤
+          <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-400/50 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/40 animate-bounce">
+            <MicIcon size={44} className="text-emerald-400" />
           </div>
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-2 shadow-lg shadow-emerald-400/30">
-              ⚡ KAMU PALING CEPAT!
+              KAMU PALING CEPAT!
             </div>
             <h1 className="text-white text-4xl sm:text-5xl font-black tracking-tight leading-tight">
               GILIRAN KAMU!
@@ -121,8 +122,8 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         <div className="relative z-10 space-y-4 max-w-sm w-full">
-          <div className="w-20 h-20 rounded-3xl bg-slate-900 border border-white/10 flex items-center justify-center text-4xl mx-auto shadow-2xl">
-            🔒
+          <div className="w-20 h-20 rounded-3xl bg-slate-900 border border-white/10 flex items-center justify-center mx-auto shadow-2xl">
+            <LockIcon size={36} className="text-slate-400" />
           </div>
           <div>
             <span className="px-3 py-1 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-widest">
@@ -155,7 +156,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 relative overflow-hidden">
         <div className="w-full max-w-sm space-y-5 relative z-10">
           <div className="text-center">
-            <span className="text-3xl">🏆</span>
+            <TrophyIcon size={40} className="text-amber-400 mx-auto mb-1" />
             <h2 className="text-white text-2xl font-black tracking-tight mt-1">KLASEMEN SKOR</h2>
             <p className="text-slate-400 text-xs">Ronde {game.current_round === 'GUESS' ? '1' : '2'}</p>
           </div>
@@ -202,8 +203,18 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
         {/* Round Pill indicator */}
         <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
-          <span className="px-2.5 py-1 rounded-full bg-slate-900 border border-white/5 text-slate-300 font-bold text-[11px]">
-            {game.current_round === 'GUESS' ? '🎵 Tebak Judul Lagu' : '🎤 Sambung Lirik'}
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-white/5 text-slate-300 font-bold text-[11px]">
+            {game.current_round === 'GUESS' ? (
+              <>
+                <MusicIcon size={13} className="text-emerald-400" />
+                <span>Tebak Judul Lagu</span>
+              </>
+            ) : (
+              <>
+                <MicIcon size={13} className="text-amber-400" />
+                <span>Sambung Lirik</span>
+              </>
+            )}
           </span>
           <span className="text-slate-400 font-semibold text-[11px]">
             Percobaan #{game.current_attempt}
@@ -243,8 +254,13 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
                       : 'bg-slate-900/80 border-white/5 text-slate-300'
                   }`}
                 >
-                  <p className="text-xs truncate font-bold">
-                    {['🥇', '🥈', '🥉'][i]} {p.name}
+                  <p className="text-xs truncate font-bold flex items-center justify-center gap-1">
+                    <span className={`text-[10px] font-mono px-1 rounded font-black ${
+                      i === 0 ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' :
+                      i === 1 ? 'bg-slate-300/20 text-slate-200 border border-slate-300/30' :
+                      'bg-amber-700/20 text-amber-500 border border-amber-700/30'
+                    }`}>#{i + 1}</span>
+                    <span className="truncate">{p.name}</span>
                   </p>
                   <p className="text-sm font-black font-mono mt-0.5">{p.score}</p>
                 </div>

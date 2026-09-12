@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ListIcon, SearchIcon, PlayIcon, MusicIcon } from '@/components/shared/Icons'
 import type { Song, RoundType } from '@/lib/types'
 
 interface SongSelectorProps {
@@ -37,7 +38,8 @@ export function SongSelector({
     <div className="glass-panel rounded-3xl p-5 border border-white/10 space-y-4 shadow-xl">
       <div className="flex items-center justify-between">
         <h3 className="text-white font-bold text-sm flex items-center gap-2">
-          <span>📑</span> Daftar Lagu
+          <ListIcon size={18} className="text-emerald-400" />
+          <span>Daftar Lagu</span>
         </h3>
         <span className="text-slate-400 text-xs font-semibold">
           {filtered.length} Lagu Tersedia
@@ -46,8 +48,8 @@ export function SongSelector({
 
       {/* Search Input */}
       <div className="relative">
-        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm">
-          🔍
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+          <SearchIcon size={16} />
         </span>
         <input
           type="text"
@@ -74,7 +76,7 @@ export function SongSelector({
             >
               <div className="min-w-0 flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0 ${isSelected ? 'bg-emerald-500 text-slate-950 font-bold' : 'bg-slate-800 text-slate-400'}`}>
-                  {isSelected ? '▶' : '🎵'}
+                  {isSelected ? <PlayIcon size={12} /> : <MusicIcon size={14} />}
                 </div>
                 <div className="truncate">
                   <p className={`font-bold text-sm truncate ${isSelected ? 'text-emerald-300' : 'text-white'}`}>

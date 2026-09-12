@@ -4,6 +4,13 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useGameState } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { playDingSound } from '@/lib/audio'
+import {
+  MicIcon,
+  MusicIcon,
+  UsersIcon,
+  TrophyIcon,
+  ArrowRightIcon,
+} from '@/components/shared/Icons'
 import { AudioPlayer } from './AudioPlayer'
 import { BuzzControlPanel } from './BuzzControlPanel'
 import { SongSelector } from './SongSelector'
@@ -101,8 +108,8 @@ export function HostDashboard({
       {/* Top Command Bar */}
       <div className="glass-panel rounded-3xl p-5 border border-white/10 flex flex-wrap items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-2xl shadow-lg shadow-emerald-500/20 shrink-0">
-            🎙️
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-slate-950 shadow-lg shadow-emerald-500/20 shrink-0">
+            <MicIcon size={22} />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -124,13 +131,14 @@ export function HostDashboard({
               key={r}
               onClick={() => hostAction('SET_ROUND', { round: r })}
               disabled={isLoading}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
                 game.current_round === r
                   ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              {r === 'GUESS' ? '🎵 Round 1: Guess The Song' : '🎤 Round 2: Sambung Lirik'}
+              {r === 'GUESS' ? <MusicIcon size={14} /> : <MicIcon size={14} />}
+              <span>{r === 'GUESS' ? 'Round 1: Tebak Lagu' : 'Round 2: Sambung Lirik'}</span>
             </button>
           ))}
         </div>
@@ -157,9 +165,10 @@ export function HostDashboard({
               <button
                 onClick={() => hostAction('NEXT_SONG')}
                 disabled={isLoading}
-                className="bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black px-6 py-3 rounded-2xl text-sm transition-all active:scale-95 shadow-lg shadow-emerald-400/20 shrink-0"
+                className="bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black px-6 py-3 rounded-2xl text-sm transition-all active:scale-95 shadow-lg shadow-emerald-400/20 shrink-0 flex items-center gap-2"
               >
-                LANJUT LAGU BERIKUTNYA ➔
+                <span>LANJUT LAGU BERIKUTNYA</span>
+                <ArrowRightIcon size={16} />
               </button>
             </div>
           )}
@@ -202,7 +211,7 @@ export function HostDashboard({
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  <span>{t === 'players' ? '👥' : '🏆'}</span>
+                  {t === 'players' ? <UsersIcon size={16} /> : <TrophyIcon size={16} />}
                   <span>{t === 'players' ? `Pemain (${players.length})` : 'Klasemen Skor'}</span>
                 </button>
               ))}

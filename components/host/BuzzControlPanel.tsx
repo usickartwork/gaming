@@ -1,5 +1,13 @@
 'use client'
 
+import {
+  CheckIcon,
+  CrossIcon,
+  LockIcon,
+  RefreshIcon,
+  MicIcon,
+  LightningIcon,
+} from '@/components/shared/Icons'
 import type { BuzzState, Player } from '@/lib/types'
 
 interface BuzzControlPanelProps {
@@ -60,22 +68,24 @@ export function BuzzControlPanel({
             disabled={buzzState === 'READY' || isLoading}
             className="flex-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black py-3.5 rounded-2xl transition-all shadow-md shadow-emerald-500/15 active:scale-95 text-xs sm:text-sm flex items-center justify-center gap-1.5"
           >
-            <span>🟢</span> BUKA BUZZER
+            <CheckIcon size={16} />
+            <span>BUKA BUZZER</span>
           </button>
           <button
             onClick={onDisableBuzz}
             disabled={buzzState === 'DISABLED' || isLoading}
             className="flex-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 hover:text-white font-bold py-3.5 rounded-2xl border border-white/5 transition-all active:scale-95 text-xs sm:text-sm flex items-center justify-center gap-1.5"
           >
-            <span>🔒</span> KUNCI
+            <LockIcon size={14} />
+            <span>KUNCI</span>
           </button>
           <button
             onClick={onResetBuzz}
             disabled={isLoading}
-            className="bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-bold py-3.5 px-4 rounded-2xl border border-white/10 transition-all active:scale-95 text-xs sm:text-sm"
+            className="bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-bold py-3.5 px-4 rounded-2xl border border-white/10 transition-all active:scale-95 text-xs sm:text-sm flex items-center justify-center"
             title="Reset ulang ke READY"
           >
-            🔄
+            <RefreshIcon size={14} />
           </button>
         </div>
       </div>
@@ -84,8 +94,9 @@ export function BuzzControlPanel({
       {buzzWinner ? (
         <div className="glass-panel rounded-3xl p-6 border border-rose-500/50 bg-gradient-to-b from-rose-950/40 via-slate-900/90 to-slate-900/90 shadow-2xl shadow-rose-950/50 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-xs font-extrabold uppercase tracking-widest border border-rose-500/30 animate-pulse">
-              ⚡ FIRST TO BUZZ
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-xs font-extrabold uppercase tracking-widest border border-rose-500/30 animate-pulse">
+              <LightningIcon size={12} />
+              <span>FIRST TO BUZZ</span>
             </span>
             <span className="text-xs text-slate-400 font-medium">
               Attempt <strong className="text-white font-bold">#{currentAttempt}</strong>
@@ -94,7 +105,8 @@ export function BuzzControlPanel({
 
           <div>
             <p className="text-white text-3xl sm:text-4xl font-black tracking-tight flex items-center gap-2">
-              <span>🎤</span> {buzzWinner.name.toUpperCase()}
+              <MicIcon size={26} className="text-rose-400 shrink-0" />
+              <span>{buzzWinner.name.toUpperCase()}</span>
             </p>
             <p className="text-slate-400 text-xs mt-1">
               Skor saat ini: <span className="text-amber-400 font-bold">{buzzWinner.score} poin</span>
@@ -114,7 +126,10 @@ export function BuzzControlPanel({
               disabled={isLoading}
               className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 text-slate-950 py-4 px-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-emerald-500/20 flex flex-col items-center justify-center font-black"
             >
-              <span className="text-xl">✅ BENAR</span>
+              <span className="text-base sm:text-lg flex items-center gap-1.5">
+                <CheckIcon size={20} />
+                <span>BENAR</span>
+              </span>
               <span className="text-xs opacity-80 font-bold">+{pts.correct} POIN</span>
             </button>
             <button
@@ -122,16 +137,19 @@ export function BuzzControlPanel({
               disabled={isLoading}
               className="bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 disabled:opacity-40 text-white py-4 px-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-rose-600/20 flex flex-col items-center justify-center font-black"
             >
-              <span className="text-xl">❌ SALAH</span>
+              <span className="text-base sm:text-lg flex items-center gap-1.5">
+                <CrossIcon size={20} />
+                <span>SALAH</span>
+              </span>
               <span className="text-xs opacity-80 font-bold">{pts.wrong} POIN</span>
             </button>
           </div>
         </div>
       ) : (
         <div className="glass-panel rounded-3xl p-8 border border-white/5 text-center space-y-2">
-          <span className="text-3xl block">
-            {buzzState === 'READY' ? '⚡' : '⏸️'}
-          </span>
+          <div className="w-10 h-10 rounded-2xl bg-slate-800/80 border border-white/5 flex items-center justify-center mx-auto text-slate-400">
+            {buzzState === 'READY' ? <LightningIcon size={20} className="text-emerald-400" /> : <LockIcon size={18} />}
+          </div>
           <p className="text-slate-300 font-bold text-sm">
             {buzzState === 'READY' ? 'Buzzer Aktif: Menunggu pemain menekan!' : 'Buzzer belum dibuka oleh host.'}
           </p>

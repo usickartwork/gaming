@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { PlayerSession } from '@/lib/types'
+import { PhoneIcon, LaptopIcon, ArrowRightIcon } from '@/components/shared/Icons'
 
 export default function LandingPage() {
   const router = useRouter()
@@ -111,7 +112,7 @@ export default function LandingPage() {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <span>📱</span> Join Game
+            <PhoneIcon size={16} /> Join Game
           </button>
           <button
             type="button"
@@ -122,7 +123,7 @@ export default function LandingPage() {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <span>💻</span> Host Room
+            <LaptopIcon size={16} /> Host Room
           </button>
         </div>
 
@@ -165,9 +166,14 @@ export default function LandingPage() {
             <button
               type="submit"
               disabled={loading || !roomCode || !playerName}
-              className="w-full bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-lg font-black py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+              className="w-full bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-lg font-black py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
             >
-              {loading ? 'MENYAMBUNGKAN...' : 'MASUK KE ARENA ➔'}
+              {loading ? 'MENYAMBUNGKAN...' : (
+                <>
+                  <span>MASUK KE ARENA</span>
+                  <ArrowRightIcon size={20} />
+                </>
+              )}
             </button>
           </form>
         ) : (
@@ -206,9 +212,14 @@ export default function LandingPage() {
             <button
               type="submit"
               disabled={loading || !gameName || !hostPassword}
-              className="w-full bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-lg font-black py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98]"
+              className="w-full bg-gradient-to-r from-emerald-400 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 text-lg font-black py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
             >
-              {loading ? 'MEMBUAT ROOM...' : 'BUAT GAME BARU ➔'}
+              {loading ? 'MEMBUAT ROOM...' : (
+                <>
+                  <span>BUAT GAME BARU</span>
+                  <ArrowRightIcon size={20} />
+                </>
+              )}
             </button>
           </form>
         )}

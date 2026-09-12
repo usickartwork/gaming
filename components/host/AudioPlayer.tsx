@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
+import { MusicIcon, DiscIcon, PlayIcon, PauseIcon, StopIcon } from '@/components/shared/Icons'
 
 interface AudioPlayerProps {
   audioUrl: string | null
@@ -52,8 +53,8 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist }: AudioPlayerProp
   if (!audioUrl) {
     return (
       <div className="glass-panel rounded-3xl p-8 border border-white/10 text-center space-y-3">
-        <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-white/5 flex items-center justify-center text-2xl mx-auto text-slate-500">
-          🎵
+        <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-white/5 flex items-center justify-center text-slate-400 mx-auto">
+          <MusicIcon size={24} />
         </div>
         <div>
           <p className="text-white font-bold text-base">Belum Ada Lagu Dipilih</p>
@@ -90,8 +91,8 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist }: AudioPlayerProp
 
       {/* Track info with animated vinyl/soundwave */}
       <div className="flex items-center gap-4 relative z-10">
-        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 flex items-center justify-center text-2xl shadow-inner shrink-0 ${playing ? 'ring-2 ring-emerald-400' : ''}`}>
-          <span className={playing ? 'animate-spin' : ''}>💿</span>
+        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/10 flex items-center justify-center shadow-inner shrink-0 ${playing ? 'ring-2 ring-emerald-400 text-emerald-400' : 'text-slate-400'}`}>
+          <DiscIcon size={26} className={playing ? 'animate-spin' : ''} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -133,23 +134,26 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist }: AudioPlayerProp
         {!playing ? (
           <button
             onClick={handlePlay}
-            className="flex-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/20 text-base flex items-center justify-center gap-2"
+            className="flex-1 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-emerald-500/20 text-sm sm:text-base flex items-center justify-center gap-2"
           >
-            <span>▶</span> PUTAR LAGU (LAPTOP)
+            <PlayIcon size={16} />
+            <span>PUTAR LAGU (LAPTOP)</span>
           </button>
         ) : (
           <button
             onClick={handlePause}
-            className="flex-1 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-amber-500/20 text-base flex items-center justify-center gap-2"
+            className="flex-1 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black py-4 rounded-2xl transition-all active:scale-[0.98] shadow-lg shadow-amber-500/20 text-sm sm:text-base flex items-center justify-center gap-2"
           >
-            <span>⏸</span> JEDA AUDIO
+            <PauseIcon size={16} />
+            <span>JEDA AUDIO</span>
           </button>
         )}
         <button
           onClick={handleStop}
-          className="bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white font-bold py-4 px-6 rounded-2xl border border-white/10 transition-all active:scale-95 text-base flex items-center justify-center gap-2"
+          className="bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white font-bold py-4 px-6 rounded-2xl border border-white/10 transition-all active:scale-95 text-sm sm:text-base flex items-center justify-center gap-2"
         >
-          <span>⏹</span> STOP
+          <StopIcon size={16} />
+          <span>STOP</span>
         </button>
       </div>
     </div>

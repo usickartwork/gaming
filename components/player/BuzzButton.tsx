@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { BuzzState } from '@/lib/types'
 import { playBuzzSound } from '@/lib/audio'
+import { LockIcon, BlockedIcon, LightningIcon } from '@/components/shared/Icons'
 
 interface BuzzButtonProps {
   buzzState: BuzzState
@@ -39,7 +40,7 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
       <div className="flex flex-col items-center gap-6">
         <div className="relative p-3 rounded-full bg-slate-900 border border-white/5 shadow-2xl">
           <div className="w-52 h-52 sm:w-60 sm:h-60 rounded-full bg-gradient-to-b from-slate-800/80 to-slate-950 border-4 border-slate-700/40 flex flex-col items-center justify-center text-slate-600 shadow-inner">
-            <span className="text-4xl mb-1 opacity-40">🔒</span>
+            <LockIcon size={36} className="mb-2 opacity-40 text-slate-400" />
             <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Buzzer Terkunci</span>
           </div>
         </div>
@@ -60,7 +61,7 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
       <div className="flex flex-col items-center gap-5">
         <div className="p-3 rounded-full bg-slate-900 border border-white/5 shadow-2xl">
           <div className="w-52 h-52 sm:w-60 sm:h-60 rounded-full bg-gradient-to-b from-rose-950/60 to-slate-950 border-4 border-rose-500/30 flex flex-col items-center justify-center text-center p-4">
-            <span className="text-5xl mb-2">🚫</span>
+            <BlockedIcon size={44} className="mb-2 text-rose-400" />
             <p className="text-rose-400 text-sm font-bold leading-snug">
               Kamu Salah Jawab
             </p>
@@ -97,13 +98,15 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
 
           {isBuzzing || pressing ? (
             <>
-              <span className="text-4xl">⚡</span>
-              <span className="text-xl font-black mt-1">BUZZ!</span>
+              <LightningIcon size={40} className="animate-bounce text-slate-950" />
+              <span className="text-xl font-black mt-1 tracking-wider">BUZZ!</span>
             </>
           ) : (
             <>
-              <span className="text-5xl drop-shadow-md">🔴</span>
-              <span className="text-2xl font-black tracking-widest mt-1 drop-shadow-md">BUZZ</span>
+              <div className="w-9 h-9 rounded-full border-2 border-white/60 flex items-center justify-center mb-1">
+                <div className="w-3.5 h-3.5 rounded-full bg-white animate-pulse" />
+              </div>
+              <span className="text-2xl font-black tracking-widest mt-0.5 drop-shadow-md">BUZZ</span>
             </>
           )}
         </button>
@@ -111,7 +114,7 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
 
       <div className="text-center">
         <p className={`text-base font-black tracking-widest ${isBuzzing || pressing ? 'text-amber-400 animate-bounce' : 'text-emerald-400 animate-pulse'}`}>
-          {isBuzzing || pressing ? '⚡ MENGIRIM KE SERVER...' : 'TEKAN SEKARANG!'}
+          {isBuzzing || pressing ? 'MENGIRIM KE SERVER...' : 'TEKAN SEKARANG!'}
         </p>
         <p className="text-slate-500 text-xs mt-0.5 font-medium">Siapa cepat dia dapat giliran bicara</p>
       </div>

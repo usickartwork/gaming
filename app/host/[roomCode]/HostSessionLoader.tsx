@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { HostDashboard } from '@/components/host/HostDashboard'
+import { LockIcon, ArrowRightIcon } from '@/components/shared/Icons'
 import type { Game, Player, Song, HostSession } from '@/lib/types'
 
 interface Props {
@@ -68,8 +69,8 @@ export function HostSessionLoader({ game, players, songs, roomCode }: Props) {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none" />
 
         <div className="w-full max-w-sm glass-panel rounded-3xl p-8 border border-white/10 shadow-2xl relative z-10 text-center space-y-5">
-          <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-white/10 flex items-center justify-center text-2xl mx-auto shadow-md">
-            🔐
+          <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-white/10 flex items-center justify-center text-emerald-400 mx-auto shadow-md">
+            <LockIcon size={24} />
           </div>
           <div>
             <h1 className="text-white text-2xl font-black tracking-tight">Login Host</h1>
@@ -102,9 +103,10 @@ export function HostSessionLoader({ game, players, songs, roomCode }: Props) {
             <button
               type="submit"
               disabled={!password || verifying}
-              className="w-full bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 disabled:opacity-40 text-slate-950 font-black py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 text-sm"
+              className="w-full bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 disabled:opacity-40 text-slate-950 font-black py-4 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 text-sm flex items-center justify-center gap-2"
             >
-              {verifying ? 'MEMERIKSA...' : 'MASUK KE KONSOL HOST ➔'}
+              <span>{verifying ? 'MEMERIKSA...' : 'MASUK KE KONSOL HOST'}</span>
+              {!verifying && <ArrowRightIcon size={16} />}
             </button>
           </form>
         </div>

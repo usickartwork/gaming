@@ -5,8 +5,6 @@ interface LeaderboardProps {
   highlightId?: string
 }
 
-const MEDALS = ['🥇', '🥈', '🥉']
-
 export function Leaderboard({ players, highlightId }: LeaderboardProps) {
   const sorted = [...players].sort((a, b) => b.score - a.score)
 
@@ -34,8 +32,16 @@ export function Leaderboard({ players, highlightId }: LeaderboardProps) {
             }`}
           >
             <div className="flex items-center gap-3 min-w-0">
-              <span className="text-xl w-7 text-center font-bold font-mono shrink-0">
-                {isGold ? '🥇' : isSilver ? '🥈' : isBronze ? '🥉' : `${i + 1}`}
+              <span className={`w-8 h-8 rounded-xl font-black font-mono flex items-center justify-center text-xs shrink-0 ${
+                isGold
+                  ? 'bg-amber-400 text-slate-950 shadow-sm shadow-amber-400/40'
+                  : isSilver
+                  ? 'bg-slate-300 text-slate-950'
+                  : isBronze
+                  ? 'bg-amber-700 text-amber-100'
+                  : 'bg-slate-800/80 text-slate-400 border border-white/5'
+              }`}>
+                #{i + 1}
               </span>
               <div className="truncate">
                 <p className={`text-base truncate font-bold ${isUser ? 'text-emerald-300' : isGold ? 'text-amber-200' : 'text-white'}`}>
