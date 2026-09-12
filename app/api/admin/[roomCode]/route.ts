@@ -1,20 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { getSupabaseServerClient } from '@/lib/supabase/server'
+import {
+  generateKnockoutBracket,
+  advanceMatchWinner,
+  getTournamentState,
+  encodeGameStateName,
+} from '@/lib/tournament-utils'
+import type { TournamentState } from '@/lib/types'
+
+async function saveGameTournament(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  gameId: string,
+  currentName: string,
+  state: TournamentState | null,
+  mode: 'CLASSIC' | 'KNOCKOUT'
+) {
+  const encodedName = encodeGameStateName(currentName, state)
+  // Always update name (guaranteed column, triggers realtime postgres_changes)
+  await supabase
+    .from('games')
+    .update({ name: encodedName })
+    .eq('id', gameId)
+
+  // Try updating direct columns if migration 004 has been executed
+  try {
+    await supabase
+      .from('games')
+      .update({ game_mode: mode, tournament_state: state })
+      .eq('id', gameId)
+  } catch {
+    // Gracefully ignore if columns not in DB schema yet
+  }
+}
 
 /**
  * PATCH /api/admin/[roomCode]
  * Host control actions.
  * Headers: x-host-password: <password>
  * Body: { action: string, payload?: object }
- *
- * Actions:
- *   SET_BUZZ_STATE  — payload: { buzzState: BuzzState }
- *   SET_GAME_STATUS — payload: { status: GameStatus }
- *   SET_CURRENT_SONG — payload: { songId: string }
- *   SET_ROUND       — payload: { round: RoundType }
- *   NEXT_SONG       — reset attempt, clear winner, set buzz DISABLED
- *   RESET_ALL_EXCLUSIONS — clear excluded_attempt for all players in game
  */
 export async function PATCH(
   req: NextRequest,
@@ -34,7 +58,7 @@ export async function PATCH(
     // Get game + verify host
     const { data: game } = await supabase
       .from('games')
-      .select('id, host_secret')
+      .select('id, name, host_secret')
       .eq('room_code', roomCode.toUpperCase())
       .single()
 
@@ -138,6 +162,68 @@ export async function PATCH(
           .from('players')
           .update({ score: 0, excluded_attempt: null })
           .eq('game_id', game.id)
+        break
+      }
+
+      case 'SET_GAME_MODE': {
+        const targetMode = payload?.mode === 'KNOCKOUT' ? 'KNOCKOUT' : 'CLASSIC'
+        let currentTS = getTournamentState(game)
+        if (targetMode === 'KNOCKOUT' && (!currentTS || currentTS.matches.length === 0)) {
+          const { data: currentPlayers } = await supabase
+            .from('players')
+            .select('*')
+            .eq('game_id', game.id)
+          currentTS = generateKnockoutBracket(currentPlayers || [], 2)
+        } else if (currentTS) {
+          currentTS = { ...currentTS, mode: targetMode }
+        }
+        await saveGameTournament(supabase, game.id, game.name, currentTS, targetMode)
+        break
+      }
+
+      case 'GENERATE_BRACKET': {
+        const { data: currentPlayers } = await supabase
+          .from('players')
+          .select('*')
+          .eq('game_id', game.id)
+        const targetPts = typeof payload?.targetPoints === 'number' ? payload.targetPoints : 2
+        const newBracket = generateKnockoutBracket(currentPlayers || [], targetPts)
+        await saveGameTournament(supabase, game.id, game.name, newBracket, 'KNOCKOUT')
+        break
+      }
+
+      case 'SET_ACTIVE_MATCH': {
+        let currentTS = getTournamentState(game)
+        if (currentTS && payload?.matchId) {
+          currentTS = {
+            ...currentTS,
+            matches: currentTS.matches.map((m) => ({
+              ...m,
+              status: m.id === payload.matchId ? 'ACTIVE' : (m.status === 'ACTIVE' ? 'UPCOMING' : m.status),
+            })),
+            activeMatchId: payload.matchId,
+          }
+          await saveGameTournament(supabase, game.id, game.name, currentTS, 'KNOCKOUT')
+        }
+        break
+      }
+
+      case 'ADVANCE_MATCH_WINNER': {
+        const currentTS = getTournamentState(game)
+        if (currentTS && payload?.matchId && payload?.winnerId) {
+          const updatedTS = advanceMatchWinner(currentTS, payload.matchId, payload.winnerId)
+          await saveGameTournament(supabase, game.id, game.name, updatedTS, 'KNOCKOUT')
+        }
+        break
+      }
+
+      case 'RESET_TOURNAMENT': {
+        const { data: currentPlayers } = await supabase
+          .from('players')
+          .select('*')
+          .eq('game_id', game.id)
+        const freshBracket = generateKnockoutBracket(currentPlayers || [], 2)
+        await saveGameTournament(supabase, game.id, game.name, freshBracket, 'KNOCKOUT')
         break
       }
 

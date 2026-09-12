@@ -9,6 +9,7 @@ import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/au
 import { BuzzButton } from './BuzzButton'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
+import { TournamentBracketModal } from './TournamentBracketModal'
 import {
   MicIcon,
   LockIcon,
@@ -17,7 +18,14 @@ import {
   DiscIcon,
   CheckIcon,
   CrossIcon,
+  SwordsIcon,
+  CrownIcon,
 } from '@/components/shared/Icons'
+import {
+  getGameDisplayName,
+  getGameMode,
+  getTournamentState,
+} from '@/lib/tournament-utils'
 import type { Game, Player, PlayerSession } from '@/lib/types'
 
 interface PlayerGameProps {
@@ -37,6 +45,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const [revealedSong, setRevealedSong] = useState<{ title: string; artist: string } | null>(null)
   const [loadingSong, setLoadingSong] = useState(false)
   const [feedbackAnim, setFeedbackAnim] = useState<'none' | 'correct' | 'wrong'>('none')
+  const [showBracketModal, setShowBracketModal] = useState(false)
+
+  const gameMode = getGameMode(game)
+  const tournamentState = getTournamentState(game)
 
   const prevBuzzStateRef = useRef(game.buzz_state)
   const prevAttemptRef = useRef(game.current_attempt)
@@ -111,6 +123,35 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const isExcluded = me?.excluded_attempt === game.current_attempt
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
+  // Tournament / Knockout state helpers
+  const activeMatch = tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)
+  const isDuelist = Boolean(
+    gameMode === 'KNOCKOUT' &&
+    activeMatch &&
+    (activeMatch.player1Id === session.playerId || activeMatch.player2Id === session.playerId)
+  )
+  const isP1 = activeMatch?.player1Id === session.playerId
+  const myDuelScore = isP1 ? activeMatch?.player1Score ?? 0 : activeMatch?.player2Score ?? 0
+  const oppDuelScore = isP1 ? activeMatch?.player2Score ?? 0 : activeMatch?.player1Score ?? 0
+  const opponentId = isP1 ? activeMatch?.player2Id : activeMatch?.player1Id
+  const opponentPlayer = players.find((p) => p.id === opponentId)
+
+  const isEliminated = Boolean(
+    gameMode === 'KNOCKOUT' &&
+    tournamentState?.matches.some(
+      (m) =>
+        m.status === 'FINISHED' &&
+        (m.player1Id === session.playerId || m.player2Id === session.playerId) &&
+        m.winnerId !== session.playerId
+    )
+  )
+
+  const upcomingMatch = tournamentState?.matches.find(
+    (m) =>
+      m.status === 'UPCOMING' &&
+      (m.player1Id === session.playerId || m.player2Id === session.playerId)
+  )
+
   const handleBuzz = async () => {
     if (isBuzzing) return
     setIsBuzzing(true)
@@ -174,7 +215,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
               </h2>
               <p className="text-emerald-300 font-bold text-sm">
                 {isMe
-                  ? 'Hebat! Poin bertambah ke skormu!'
+                  ? (gameMode === 'KNOCKOUT' ? '+1 Poin Duel masuk ke skormu!' : 'Hebat! Poin bertambah ke skormu!')
                   : `${winnerName} berhasil menebak lagu ini!`}
               </p>
             </div>
@@ -229,6 +270,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         gameName={game.name}
         players={players}
         isHost={false}
+        gameMode={gameMode}
       />
     )
   }
@@ -249,26 +291,29 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
               PERMAINAN SELESAI
             </div>
             <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">
-              KLASEMEN AKHIR
+              Terima Kasih Telah Bermain!
             </h1>
             <p className="text-slate-400 text-xs mt-1">
-              Host telah menyelesaikan sesi permainan. Terima kasih sudah bermain!
+              Host telah menyelesaikan sesi permainan ini.
             </p>
           </div>
 
-          <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl">
+          {/* Final Standings */}
+          <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl text-left">
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2 text-center">
+              Klasemen Akhir
+            </p>
             <Leaderboard players={players} highlightId={session.playerId} />
           </div>
 
           <button
-            type="button"
             onClick={() => {
               if (typeof window !== 'undefined') {
                 localStorage.removeItem(`cg-session-${game.room_code}`)
               }
               router.push('/')
             }}
-            className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950 font-black text-base shadow-lg shadow-emerald-500/25 transition-all active:scale-[0.98]"
+            className="w-full py-3.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm border border-white/10 transition-all active:scale-95 shadow-lg"
           >
             Kembali ke Beranda
           </button>
@@ -280,13 +325,18 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   // ── LOCKED: This player won ─────────────────────────────────────
   if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && isWinner) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-emerald-950/80 via-slate-950 to-black">
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-emerald-950/60 via-slate-900 to-black">
         {renderFeedbackOverlay()}
-        <div className="absolute inset-0 bg-emerald-500/10 blur-[120px] pointer-events-none" />
-
-        <div className="relative z-10 space-y-4 max-w-sm w-full">
-          <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-400/50 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/40 animate-bounce">
-            <MicIcon size={44} className="text-emerald-400" />
+        <TournamentBracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          tournamentState={tournamentState}
+          players={players}
+          currentPlayerId={session.playerId}
+        />
+        <div className="relative z-10 space-y-6 max-w-sm w-full">
+          <div className="w-24 h-24 rounded-full bg-emerald-400 text-slate-950 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-400/40 animate-pulse">
+            <MicIcon size={44} />
           </div>
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-2 shadow-lg shadow-emerald-400/30">
@@ -301,8 +351,13 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           </div>
 
           <div className="glass-panel rounded-3xl p-5 border border-emerald-500/30 shadow-xl">
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Skor Kamu Saat Ini</p>
-            <p className="text-emerald-400 text-4xl font-black font-mono mt-1">{me?.score ?? 0} <span className="text-base text-slate-400 font-semibold">pts</span></p>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+              {gameMode === 'KNOCKOUT' ? 'Skor Duel 1v1 Kamu' : 'Skor Kamu Saat Ini'}
+            </p>
+            <p className="text-emerald-400 text-4xl font-black font-mono mt-1">
+              {gameMode === 'KNOCKOUT' ? myDuelScore : me?.score ?? 0}{' '}
+              <span className="text-base text-slate-400 font-semibold">pts</span>
+            </p>
           </div>
 
           <p className="text-slate-500 text-xs animate-pulse">
@@ -318,6 +373,13 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         {renderFeedbackOverlay()}
+        <TournamentBracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          tournamentState={tournamentState}
+          players={players}
+          currentPlayerId={session.playerId}
+        />
         <div className="relative z-10 space-y-4 max-w-sm w-full">
           <div className="w-20 h-20 rounded-3xl bg-slate-900 border border-white/10 flex items-center justify-center mx-auto shadow-2xl">
             <LockIcon size={36} className="text-slate-400" />
@@ -335,8 +397,13 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           </div>
 
           <div className="glass-panel rounded-3xl p-5 border border-white/5 shadow-xl">
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Skor Kamu</p>
-            <p className="text-white text-3xl font-black font-mono mt-1">{me?.score ?? 0} <span className="text-sm text-slate-500 font-semibold">pts</span></p>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">
+              {gameMode === 'KNOCKOUT' ? 'Skor Duel Kamu' : 'Skor Kamu'}
+            </p>
+            <p className="text-white text-3xl font-black font-mono mt-1">
+              {gameMode === 'KNOCKOUT' ? myDuelScore : me?.score ?? 0}{' '}
+              <span className="text-sm text-slate-500 font-semibold">pts</span>
+            </p>
           </div>
 
           <p className="text-slate-500 text-xs">
@@ -352,10 +419,16 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 relative overflow-hidden">
         {renderFeedbackOverlay()}
+        <TournamentBracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          tournamentState={tournamentState}
+          players={players}
+          currentPlayerId={session.playerId}
+        />
         <div className="w-full max-w-sm space-y-4 relative z-10 py-4">
           {/* Revealed Song Title & Artist Card */}
           <div className="glass-panel rounded-3xl p-5 border border-emerald-500/40 bg-gradient-to-b from-emerald-950/60 via-slate-900 to-slate-950 shadow-2xl relative overflow-hidden text-center space-y-3">
-            {/* Ambient emerald blur */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-black text-[11px] uppercase tracking-wider">
@@ -380,15 +453,48 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             </div>
           </div>
 
-          <div className="text-center pt-2">
-            <TrophyIcon size={28} className="text-amber-400 mx-auto mb-1" />
-            <h2 className="text-white text-lg font-black tracking-tight">KLASEMEN SKOR SEMENTARA</h2>
-            <p className="text-slate-400 text-xs">Ronde {game.current_round === 'GUESS' ? '1' : '2'}</p>
-          </div>
+          {/* Tournament Knockout summary or Classic Leaderboard */}
+          {gameMode === 'KNOCKOUT' ? (
+            <div className="glass-panel rounded-3xl p-5 border border-amber-500/30 bg-amber-950/20 shadow-2xl text-center space-y-3">
+              <div className="flex items-center justify-center gap-2 text-amber-400">
+                <SwordsIcon size={20} />
+                <span className="text-xs font-black uppercase tracking-wider">Status Duel 1v1</span>
+              </div>
 
-          <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl">
-            <Leaderboard players={players} highlightId={session.playerId} />
-          </div>
+              {activeMatch && (
+                <div className="p-3 bg-slate-900/90 rounded-2xl border border-white/10 text-xs font-bold text-slate-200">
+                  <p className="text-slate-400 text-[10px] uppercase">{activeMatch.roundName}</p>
+                  <p className="text-base font-black text-white mt-1">
+                    {players.find((p) => p.id === activeMatch.player1Id)?.name ?? 'P1'} ({activeMatch.player1Score})
+                    {' VS '}
+                    {players.find((p) => p.id === activeMatch.player2Id)?.name ?? 'P2'} ({activeMatch.player2Score})
+                  </p>
+                  <p className="text-[10px] text-amber-400 mt-1">Target Menang: {tournamentState?.targetPoints ?? 2} Poin</p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowBracketModal(true)}
+                className="w-full py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-400/20"
+              >
+                <SwordsIcon size={14} />
+                <span>Lihat Bagan Turnamen Lengkap</span>
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="text-center pt-2">
+                <TrophyIcon size={28} className="text-amber-400 mx-auto mb-1" />
+                <h2 className="text-white text-lg font-black tracking-tight">KLASEMEN SKOR SEMENTARA</h2>
+                <p className="text-slate-400 text-xs">Ronde {game.current_round === 'GUESS' ? '1' : '2'}</p>
+              </div>
+
+              <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl">
+                <Leaderboard players={players} highlightId={session.playerId} />
+              </div>
+            </>
+          )}
 
           <div className="text-center py-1">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 border border-white/10 text-slate-400 text-xs animate-pulse">
@@ -401,7 +507,137 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     )
   }
 
-  // ── Active game: DISABLED or READY ─────────────────────────────
+  // ── Knockout Spectator / Waiting View (if player is NOT one of the 2 active duelists) ─────
+  if (gameMode === 'KNOCKOUT' && !isDuelist) {
+    const activeP1 = players.find((p) => p.id === activeMatch?.player1Id)
+    const activeP2 = players.find((p) => p.id === activeMatch?.player2Id)
+
+    return (
+      <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 select-none relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
+        {renderFeedbackOverlay()}
+        <TournamentBracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          tournamentState={tournamentState}
+          players={players}
+          currentPlayerId={session.playerId}
+        />
+
+        {/* Top Header Panel */}
+        <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-lg relative z-10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-lg font-black text-slate-950 shadow-md shadow-amber-500/20 shrink-0">
+                {session.playerName.charAt(0).toUpperCase()}
+              </div>
+              <div className="truncate">
+                <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm" />
+                  <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
+                    {isEliminated ? 'Gugur • Penonton' : upcomingMatch ? 'Menunggu Giliran' : 'Mode Turnamen'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowBracketModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-amber-400/15 border border-amber-400/30 text-amber-300 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95"
+            >
+              <SwordsIcon size={13} />
+              <span>Bagan</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Center: Spectator Live Match Arena */}
+        <div className="my-auto py-6 relative z-10 text-center space-y-5 max-w-sm mx-auto w-full">
+          <div className="w-16 h-16 rounded-3xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto shadow-xl">
+            <SwordsIcon size={32} />
+          </div>
+
+          <div>
+            <span className="px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-[10px] font-black uppercase tracking-widest animate-pulse">
+              LIVE DUEL 1v1
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-2">
+              {activeMatch?.roundName ?? 'Pertandingan Turnamen'}
+            </h2>
+            <p className="text-slate-400 text-xs mt-0.5">
+              Hanya 2 pemain yang sedang bertanding yang dapat menekan buzzer.
+            </p>
+          </div>
+
+          {/* Head to head live duel display */}
+          <div className="glass-panel rounded-3xl p-5 border border-white/10 bg-slate-900/90 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1 text-center truncate">
+                <p className="text-white font-extrabold text-sm sm:text-base truncate">
+                  {activeP1?.name ?? 'Pemain 1'}
+                </p>
+                <p className="text-3xl sm:text-4xl font-black text-amber-400 font-mono mt-1">
+                  {activeMatch?.player1Score ?? 0}
+                </p>
+              </div>
+
+              <div className="text-slate-500 font-black text-xs uppercase tracking-widest px-2 py-1 rounded-lg bg-white/5">
+                VS
+              </div>
+
+              <div className="flex-1 text-center truncate">
+                <p className="text-white font-extrabold text-sm sm:text-base truncate">
+                  {activeP2?.name ?? 'Pemain 2'}
+                </p>
+                <p className="text-3xl sm:text-4xl font-black text-amber-400 font-mono mt-1">
+                  {activeMatch?.player2Score ?? 0}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[11px] text-slate-400">
+              <span>Target Menang: <strong className="text-white">{tournamentState?.targetPoints ?? 2} Poin</strong></span>
+              <span>{activeMatch?.status === 'ACTIVE' ? 'Sedang Berlangsung' : 'Menunggu Mulai'}</span>
+            </div>
+          </div>
+
+          {/* Your status message card */}
+          <div className="glass-panel rounded-2xl p-4 border border-white/5 bg-slate-900/60 text-xs">
+            {isEliminated ? (
+              <p className="text-slate-400">
+                Kamu telah gugur di babak sebelumnya. Saksikan siapa yang akan menjadi Juara!
+              </p>
+            ) : upcomingMatch ? (
+              <p className="text-teal-300 font-bold">
+                Bersiaplah! Pertandinganmu akan tiba di <strong className="text-white">{upcomingMatch.roundName}</strong>.
+              </p>
+            ) : (
+              <p className="text-slate-400">
+                Menunggu giliran pertandingan berikutnya sesuai susunan bagan turnamen.
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowBracketModal(true)}
+            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-400/20"
+          >
+            <SwordsIcon size={14} />
+            <span>Lihat Bagan Turnamen</span>
+          </button>
+        </div>
+
+        {/* Bottom indicator */}
+        <div className="text-center py-2 text-slate-500 text-xs">
+          Buzzer Anda terkunci selama duel ini
+        </div>
+      </div>
+    )
+  }
+
+  // ── Active game: DISABLED or READY (Free for All or Active Duelist) ───
   return (
     <div
       className={`min-h-screen flex flex-col justify-between p-4 sm:p-6 select-none relative overflow-hidden transition-all ${
@@ -413,6 +649,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       }`}
     >
       {renderFeedbackOverlay()}
+      <TournamentBracketModal
+        isOpen={showBracketModal}
+        onClose={() => setShowBracketModal(false)}
+        tournamentState={tournamentState}
+        players={players}
+        currentPlayerId={session.playerId}
+      />
+
       {/* Wrong Answer temporary alert banner */}
       {feedbackAnim === 'wrong' && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-rose-600/90 border border-rose-400/50 text-white font-black text-xs uppercase tracking-wider shadow-2xl shadow-rose-600/40 animate-bounce">
@@ -424,41 +668,69 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-lg relative z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-lg font-black text-slate-950 shadow-md shadow-emerald-500/20 shrink-0">
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-black text-slate-950 shadow-md shrink-0 ${
+              isDuelist ? 'bg-amber-400 shadow-amber-400/30' : 'bg-gradient-to-br from-emerald-400 to-teal-600 shadow-emerald-500/20'
+            }`}>
               {session.playerName.charAt(0).toUpperCase()}
             </div>
             <div className="truncate">
               <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" />
-                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Controller Aktif</span>
+                <span className={`w-1.5 h-1.5 rounded-full ${isDuelist ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 shadow-sm shadow-emerald-400'}`} />
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+                  {isDuelist ? 'DUEL 1v1 AKTIF' : 'Controller Aktif'}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="text-right pl-3">
-            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Skor Kamu</p>
-            <p className="text-emerald-400 text-2xl font-black font-mono leading-none mt-0.5">{me?.score ?? 0}</p>
+          <div className="flex items-center gap-2.5">
+            {gameMode === 'KNOCKOUT' && (
+              <button
+                type="button"
+                onClick={() => setShowBracketModal(true)}
+                className="px-3 py-1.5 rounded-xl bg-amber-400/15 border border-amber-400/30 text-amber-300 font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95"
+              >
+                <SwordsIcon size={13} />
+                <span>Bagan</span>
+              </button>
+            )}
+
+            <div className="text-right pl-1">
+              <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                {isDuelist ? 'Skor Duel' : 'Skor Kamu'}
+              </p>
+              <p className="text-emerald-400 text-2xl font-black font-mono leading-none mt-0.5">
+                {isDuelist ? myDuelScore : me?.score ?? 0}
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Round Pill indicator */}
+        {/* Round Pill indicator or Duel status */}
         <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between text-xs">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-white/5 text-slate-300 font-bold text-[11px]">
-            {game.current_round === 'GUESS' ? (
-              <>
-                <MusicIcon size={13} className="text-emerald-400" />
-                <span>Tebak Judul Lagu</span>
-              </>
-            ) : (
-              <>
-                <MicIcon size={13} className="text-amber-400" />
-                <span>Sambung Lirik</span>
-              </>
-            )}
-          </span>
+          {isDuelist ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 font-bold text-[11px]">
+              <SwordsIcon size={13} className="text-amber-400" />
+              <span>Lawan: {opponentPlayer?.name ?? 'Lawan'} ({oppDuelScore} Poin)</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-white/5 text-slate-300 font-bold text-[11px]">
+              {game.current_round === 'GUESS' ? (
+                <>
+                  <MusicIcon size={13} className="text-emerald-400" />
+                  <span>Tebak Judul Lagu</span>
+                </>
+              ) : (
+                <>
+                  <MicIcon size={13} className="text-amber-400" />
+                  <span>Sambung Lirik</span>
+                </>
+              )}
+            </span>
+          )}
           <span className="text-slate-400 font-semibold text-[11px]">
-            Percobaan #{game.current_attempt}
+            {isDuelist ? `Target: ${tournamentState?.targetPoints ?? 2} Poin` : `Percobaan #${game.current_attempt}`}
           </span>
         </div>
       </div>
@@ -474,40 +746,57 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         />
       </div>
 
-      {/* Bottom: Mini Podium Roster */}
+      {/* Bottom: Mini Podium Roster or Duel Opponent summary */}
       <div className="glass-panel rounded-3xl p-3.5 border border-white/10 relative z-10 space-y-2">
         <div className="flex items-center justify-between px-1">
-          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Peringkat Sementara</span>
-          <span className="text-emerald-400 text-[10px] font-bold">Top 3</span>
+          <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+            {isDuelist ? 'Arena Duel 1v1' : 'Peringkat Sementara'}
+          </span>
+          <span className="text-emerald-400 text-[10px] font-bold">
+            {isDuelist ? activeMatch?.roundName ?? 'Duel' : 'Top 3'}
+          </span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {[...players]
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 3)
-            .map((p, i) => {
-              const isMe = p.id === session.playerId
-              return (
-                <div
-                  key={p.id}
-                  className={`p-2 rounded-xl text-center border transition-all truncate ${
-                    isMe
-                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                      : 'bg-slate-900/80 border-white/5 text-slate-300'
-                  }`}
-                >
-                  <p className="text-xs truncate font-bold flex items-center justify-center gap-1">
-                    <span className={`text-[10px] font-mono px-1 rounded font-black ${
-                      i === 0 ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' :
-                      i === 1 ? 'bg-slate-300/20 text-slate-200 border border-slate-300/30' :
-                      'bg-amber-700/20 text-amber-500 border border-amber-700/30'
-                    }`}>#{i + 1}</span>
-                    <span className="truncate">{p.name}</span>
-                  </p>
-                  <p className="text-sm font-black font-mono mt-0.5">{p.score}</p>
-                </div>
-              )
-            })}
-        </div>
+        {isDuelist ? (
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="p-2 rounded-xl text-center bg-emerald-500/15 border border-emerald-500/40 text-emerald-300">
+              <p className="text-[10px] uppercase font-bold text-slate-400">Kamu</p>
+              <p className="text-xl font-mono font-black mt-0.5">{myDuelScore} Poin</p>
+            </div>
+            <div className="p-2 rounded-xl text-center bg-slate-900/80 border border-white/5 text-slate-300">
+              <p className="text-[10px] uppercase font-bold text-slate-400">{opponentPlayer?.name ?? 'Lawan'}</p>
+              <p className="text-xl font-mono font-black mt-0.5">{oppDuelScore} Poin</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {[...players]
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 3)
+              .map((p, i) => {
+                const isMe = p.id === session.playerId
+                return (
+                  <div
+                    key={p.id}
+                    className={`p-2 rounded-xl text-center border transition-all truncate ${
+                      isMe
+                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                        : 'bg-slate-900/80 border-white/5 text-slate-300'
+                    }`}
+                  >
+                    <p className="text-xs truncate font-bold flex items-center justify-center gap-1">
+                      <span className={`text-[10px] font-mono px-1 rounded font-black ${
+                        i === 0 ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' :
+                        i === 1 ? 'bg-slate-300/20 text-slate-200 border border-slate-300/30' :
+                        'bg-amber-700/20 text-amber-500 border border-amber-700/30'
+                      }`}>#{i + 1}</span>
+                      <span className="truncate">{p.name}</span>
+                    </p>
+                    <p className="text-sm font-black font-mono mt-0.5">{p.score}</p>
+                  </div>
+                )
+              })}
+          </div>
+        )}
       </div>
     </div>
   )

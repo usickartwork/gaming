@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase/server'
+import { getGameMode, getTournamentState } from '@/lib/tournament-utils'
 
 /**
  * POST /api/admin/[roomCode]/buzz
@@ -23,21 +24,7 @@ export async function POST(
 
     const supabase = getSupabaseServerClient()
 
-    // Ultra-fast path: single atomic RPC (< 1ms inside PostgreSQL)
-    const { data: claimResult, error: claimErr } = await supabase.rpc('claim_buzz', {
-      p_room_code: roomCode.toUpperCase(),
-      p_player_id: playerId,
-      p_session_token: sessionToken,
-    })
-
-    if (!claimErr && claimResult) {
-      if (!claimResult.ok) {
-        return NextResponse.json({ error: claimResult.error }, { status: 400 })
-      }
-      return NextResponse.json(claimResult)
-    }
-
-    // Fallback: parallel verification queries
+    // Parallel verification queries
     const [
       { data: player, error: playerErr },
       { data: game, error: gameErr }
@@ -50,7 +37,7 @@ export async function POST(
         .single(),
       supabase
         .from('games')
-        .select('id, buzz_state, current_attempt')
+        .select('id, name, buzz_state, current_attempt')
         .eq('room_code', roomCode.toUpperCase())
         .single(),
     ])
@@ -63,7 +50,20 @@ export async function POST(
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     }
 
-    // 3. Check if player is excluded from this attempt
+    // Check if tournament mode restricts buzzing to the 2 active duelists
+    const mode = getGameMode(game)
+    if (mode === 'KNOCKOUT') {
+      const ts = getTournamentState(game)
+      const activeMatch = ts?.matches?.find((m) => m.id === ts.activeMatchId)
+      if (activeMatch && activeMatch.player1Id !== playerId && activeMatch.player2Id !== playerId) {
+        return NextResponse.json(
+          { error: 'Buzzer hanya untuk 2 pemain yang sedang bertanding di duel ini!' },
+          { status: 403 }
+        )
+      }
+    }
+
+    // Check if player is excluded from this attempt
     if (player.excluded_attempt === game.current_attempt) {
       return NextResponse.json(
         { error: 'You cannot buzz on this attempt (answered wrong previously)' },

@@ -7,6 +7,31 @@ export type GameStatus = 'LOBBY' | 'STARTING' | 'ROUND_ACTIVE' | 'ROUND_COMPLETE
 export type RoundType = 'GUESS' | 'LYRICS'
 export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD'
 export type AttemptResult = 'CORRECT' | 'WRONG'
+export type GameMode = 'CLASSIC' | 'KNOCKOUT'
+export type TournamentMatchStatus = 'UPCOMING' | 'ACTIVE' | 'FINISHED'
+
+export interface TournamentMatch {
+  id: string
+  roundIndex: number
+  roundName: string
+  matchIndex: number
+  player1Id: string | null
+  player2Id: string | null
+  player1Score: number
+  player2Score: number
+  winnerId: string | null
+  nextMatchId: string | null
+  nextMatchSlot: 1 | 2 | null
+  status: TournamentMatchStatus
+}
+
+export interface TournamentState {
+  mode: GameMode
+  matches: TournamentMatch[]
+  activeMatchId: string | null
+  targetPoints: number
+  championId: string | null
+}
 
 export interface Game {
   id: string
@@ -19,6 +44,8 @@ export interface Game {
   buzz_winner_id: string | null
   current_attempt: number
   created_at: string
+  game_mode?: GameMode
+  tournament_state?: TournamentState | null
 }
 
 export interface Player {

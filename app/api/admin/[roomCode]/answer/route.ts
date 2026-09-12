@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { getSupabaseServerClient } from '@/lib/supabase/server'
 import { getPoints } from '@/lib/game-logic'
+import {
+  recordDuelPoint,
+  getGameMode,
+  getTournamentState,
+  encodeGameStateName,
+} from '@/lib/tournament-utils'
 
 /**
  * POST /api/admin/[roomCode]/answer
@@ -31,7 +37,7 @@ export async function POST(
     // Get game with host secret
     const { data: game } = await supabase
       .from('games')
-      .select('id, host_secret, buzz_winner_id, current_attempt, current_song_id')
+      .select('id, name, host_secret, buzz_winner_id, current_attempt, current_song_id')
       .eq('room_code', roomCode.toUpperCase())
       .single()
 
@@ -90,6 +96,35 @@ export async function POST(
     })
 
     if (result === 'CORRECT') {
+      // Check if tournament mode duel score should be updated
+      const mode = getGameMode(game)
+      let duelResult: { matchWon: boolean; winnerId: string | null } = { matchWon: false, winnerId: null }
+      if (mode === 'KNOCKOUT') {
+        const ts = getTournamentState(game)
+        if (ts && ts.activeMatchId) {
+          const { updatedState, matchWon, winnerId } = recordDuelPoint(
+            ts,
+            ts.activeMatchId,
+            game.buzz_winner_id
+          )
+          duelResult = { matchWon, winnerId }
+          const encodedName = encodeGameStateName(game.name, updatedState)
+          await supabase
+            .from('games')
+            .update({ name: encodedName })
+            .eq('id', game.id)
+
+          try {
+            await supabase
+              .from('games')
+              .update({ tournament_state: updatedState })
+              .eq('id', game.id)
+          } catch {
+            // ignore if column does not exist
+          }
+        }
+      }
+
       // Song done — move to RESULT state, reset attempt counter
       await supabase
         .from('games')
@@ -99,6 +134,8 @@ export async function POST(
           current_attempt: 1,
         })
         .eq('id', game.id)
+
+      return NextResponse.json({ ok: true, points, ...duelResult })
     } else {
       // Wrong — next attempt, reset buzz to READY
       const nextAttempt = game.current_attempt + 1
@@ -110,9 +147,9 @@ export async function POST(
           current_attempt: nextAttempt,
         })
         .eq('id', game.id)
-    }
 
-    return NextResponse.json({ ok: true, points })
+      return NextResponse.json({ ok: true, points })
+    }
   } catch (err) {
     console.error('POST /api/admin/[roomCode]/answer error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

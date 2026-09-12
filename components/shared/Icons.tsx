@@ -242,4 +242,28 @@ export function EditIcon({ size = 20, className = '', ...props }: IconProps) {
   )
 }
 
+export function SwordsIcon({ size = 20, className = '', ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5" />
+      <line x1="13" y1="19" x2="19" y2="13" />
+      <line x1="16" y1="16" x2="20" y2="20" />
+      <line x1="19" y1="21" x2="21" y2="19" />
+      <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5" />
+      <line x1="5" y1="14" x2="9" y2="18" />
+      <line x1="7" y1="17" x2="4" y2="20" />
+      <line x1="3" y1="19" x2="5" y2="21" />
+    </svg>
+  )
+}
+
+export function CrownIcon({ size = 20, className = '', ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14v1a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-1z" />
+    </svg>
+  )
+}
+
+
 

@@ -12,14 +12,22 @@ import {
   TrophyIcon,
   ArrowRightIcon,
   TrashIcon,
+  SwordsIcon,
+  CrownIcon,
 } from '@/components/shared/Icons'
 import { AudioPlayer } from './AudioPlayer'
 import { BuzzControlPanel } from './BuzzControlPanel'
 import { SongSelector } from './SongSelector'
 import { PlayerListPanel } from './PlayerListPanel'
+import { TournamentBracket } from './TournamentBracket'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
-import type { Game, Player, Song, RoundType, HostSession } from '@/lib/types'
+import {
+  getGameDisplayName,
+  getGameMode,
+  getTournamentState,
+} from '@/lib/tournament-utils'
+import type { Game, Player, Song, RoundType, HostSession, GameMode } from '@/lib/types'
 
 interface HostDashboardProps {
   initialGame: Game
@@ -38,9 +46,19 @@ export function HostDashboard({
   const game = useGameState(initialGame.id, initialGame)
   const players = usePlayers(initialGame.id, initialPlayers)
   const [isLoading, setIsLoading] = useState(false)
-  const [tab, setTab] = useState<'players' | 'leaderboard'>('players')
+  const [tab, setTab] = useState<'bracket' | 'players' | 'leaderboard'>('players')
   const [confirmEndGame, setConfirmEndGame] = useState(false)
   const [feedbackAnim, setFeedbackAnim] = useState<'none' | 'correct' | 'wrong'>('none')
+
+  const gameMode = getGameMode(game)
+  const tournamentState = getTournamentState(game)
+
+  // Switch tab to bracket automatically when tournament mode is selected
+  useEffect(() => {
+    if (gameMode === 'KNOCKOUT') {
+      setTab('bracket')
+    }
+  }, [gameMode])
 
   const currentSong = songs.find((s) => s.id === game.current_song_id) ?? null
   const buzzWinner = players.find((p) => p.id === game.buzz_winner_id) ?? null
@@ -83,6 +101,38 @@ export function HostDashboard({
 
   const handleResetAllScores = useCallback(async () => {
     await hostAction('RESET_ALL_SCORES')
+  }, [hostAction])
+
+  const handleSetGameMode = useCallback(
+    async (mode: GameMode) => {
+      await hostAction('SET_GAME_MODE', { mode })
+    },
+    [hostAction]
+  )
+
+  const handleGenerateBracket = useCallback(
+    async (targetPoints: number) => {
+      await hostAction('GENERATE_BRACKET', { targetPoints })
+    },
+    [hostAction]
+  )
+
+  const handleSetActiveMatch = useCallback(
+    async (matchId: string) => {
+      await hostAction('SET_ACTIVE_MATCH', { matchId })
+    },
+    [hostAction]
+  )
+
+  const handleAdvanceWinner = useCallback(
+    async (matchId: string, winnerId: string) => {
+      await hostAction('ADVANCE_MATCH_WINNER', { matchId, winnerId })
+    },
+    [hostAction]
+  )
+
+  const handleResetTournament = useCallback(async () => {
+    await hostAction('RESET_TOURNAMENT')
   }, [hostAction])
 
   const handleEndGame = async () => {
@@ -173,6 +223,8 @@ export function HostDashboard({
         gameName={game.name}
         players={players}
         isHost={true}
+        gameMode={gameMode}
+        onSetGameMode={handleSetGameMode}
         onStartGame={() => hostAction('SET_GAME_STATUS', { status: 'ROUND_ACTIVE' })}
         isStarting={isLoading}
       />
@@ -209,22 +261,52 @@ export function HostDashboard({
           </div>
         </div>
 
-        {/* Right side controls: Round switch pills + Selesaikan Game */}
+        {/* Right side controls: Mode Switcher + Round switch pills + Selesaikan Game */}
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Game Mode Switcher */}
+          <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-white/10 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleSetGameMode('CLASSIC')}
+              disabled={isLoading}
+              className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+                gameMode === 'CLASSIC'
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <TrophyIcon size={14} />
+              <span>Klasik (FFA)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetGameMode('KNOCKOUT')}
+              disabled={isLoading}
+              className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 ${
+                gameMode === 'KNOCKOUT'
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-md shadow-amber-400/25'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <SwordsIcon size={14} />
+              <span>Babak Gugur (1v1)</span>
+            </button>
+          </div>
+
           <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-white/10 shrink-0">
             {(['GUESS', 'LYRICS'] as RoundType[]).map((r) => (
               <button
                 key={r}
                 onClick={() => hostAction('SET_ROUND', { round: r })}
                 disabled={isLoading}
-                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
                   game.current_round === r
                     ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/25'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
                 {r === 'GUESS' ? <MusicIcon size={14} /> : <MicIcon size={14} />}
-                <span>{r === 'GUESS' ? 'Round 1: Tebak Lagu' : 'Round 2: Sambung Lirik'}</span>
+                <span>{r === 'GUESS' ? 'Tebak Lagu' : 'Sambung Lirik'}</span>
               </button>
             ))}
           </div>
@@ -280,6 +362,49 @@ export function HostDashboard({
         </div>
       )}
 
+      {/* Active Duel Header Banner if Knockout Mode is on */}
+      {gameMode === 'KNOCKOUT' && (
+        <div className="glass-panel rounded-3xl p-5 border border-amber-400/40 bg-gradient-to-r from-amber-950/40 via-slate-900/90 to-slate-900/90 shadow-xl flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-400/20 shrink-0">
+              <SwordsIcon size={24} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 text-xs font-black uppercase tracking-wider">
+                  {tournamentState?.activeMatchId
+                    ? `${tournamentState.matches.find((m) => m.id === tournamentState.activeMatchId)?.roundName ?? 'Babak Turnamen'} • LIVE DUEL`
+                    : 'MODE BABAK GUGUR 1v1'}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-black uppercase border border-amber-400/30">
+                  TARGET: {tournamentState?.targetPoints ?? 2} POIN
+                </span>
+              </div>
+              <p className="text-white text-base sm:text-lg font-black mt-0.5">
+                {(() => {
+                  const am = tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)
+                  if (!am || !am.player1Id || !am.player2Id) return 'Belum ada duel aktif. Buka tab Bagan Turnamen untuk memilih pertandingan.'
+                  const p1 = players.find((p) => p.id === am.player1Id)
+                  const p2 = players.find((p) => p.id === am.player2Id)
+                  return `${p1?.name ?? 'P1'} (${am.player1Score}) VS ${p2?.name ?? 'P2'} (${am.player2Score})`
+                })()}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setTab('bracket')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              tab === 'bracket' ? 'bg-amber-400 text-slate-950 font-black' : 'bg-white/10 text-white hover:bg-white/15'
+            }`}
+          >
+            <SwordsIcon size={14} />
+            <span>Lihat Bagan Turnamen</span>
+          </button>
+        </div>
+      )}
+
       {/* Main Command Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* Left column: Music & Tracklist (7 cols) */}
@@ -298,7 +423,9 @@ export function HostDashboard({
             <div className="glass-panel rounded-3xl p-5 border border-emerald-500/40 bg-emerald-500/10 shadow-lg shadow-emerald-950/40 flex items-center justify-between gap-4 animate-pulse">
               <div>
                 <p className="text-emerald-300 font-bold text-sm">Soal telah terjawab!</p>
-                <p className="text-slate-300 text-xs">Poin sudah masuk ke leaderboard.</p>
+                <p className="text-slate-300 text-xs">
+                  {gameMode === 'KNOCKOUT' ? 'Poin duel telah diperbarui di bagan turnamen.' : 'Poin sudah masuk ke leaderboard.'}
+                </p>
               </div>
               <button
                 onClick={() => hostAction('NEXT_SONG')}
@@ -321,7 +448,7 @@ export function HostDashboard({
           />
         </div>
 
-        {/* Right column: Buzzer Controller & Leaderboard (5 cols) */}
+        {/* Right column: Buzzer Controller & Tabs (5 cols) */}
         <div className="lg:col-span-5 space-y-5">
           {/* Buzzer Console */}
           <BuzzControlPanel
@@ -336,33 +463,59 @@ export function HostDashboard({
             isLoading={isLoading}
           />
 
-          {/* Players & Leaderboard Tabs */}
+          {/* Players & Leaderboard & Tournament Tabs */}
           <div className="glass-panel rounded-3xl overflow-hidden border border-white/10 shadow-xl">
-            <div className="flex border-b border-white/5 bg-slate-900/60 p-1.5">
+            <div className="flex border-b border-white/5 bg-slate-900/60 p-1.5 gap-1">
+              {gameMode === 'KNOCKOUT' && (
+                <button
+                  key="bracket"
+                  onClick={() => setTab('bracket')}
+                  className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    tab === 'bracket'
+                      ? 'bg-amber-400 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <SwordsIcon size={14} />
+                  <span>Bagan (1v1)</span>
+                </button>
+              )}
               {(['players', 'leaderboard'] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
-                  className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                  className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
                     tab === t
                       ? 'bg-white/10 text-white shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  {t === 'players' ? <UsersIcon size={16} /> : <TrophyIcon size={16} />}
-                  <span>{t === 'players' ? `Pemain (${players.length})` : 'Klasemen Skor'}</span>
+                  {t === 'players' ? <UsersIcon size={14} /> : <TrophyIcon size={14} />}
+                  <span>{t === 'players' ? `Pemain (${players.length})` : 'Klasemen'}</span>
                 </button>
               ))}
             </div>
             <div className="p-4">
-              {tab === 'players' ? (
+              {tab === 'bracket' && gameMode === 'KNOCKOUT' && (
+                <TournamentBracket
+                  tournamentState={tournamentState}
+                  players={players}
+                  onSetActiveMatch={handleSetActiveMatch}
+                  onAdvanceWinner={handleAdvanceWinner}
+                  onGenerateBracket={handleGenerateBracket}
+                  onResetTournament={handleResetTournament}
+                  isLoading={isLoading}
+                />
+              )}
+              {tab === 'players' && (
                 <PlayerListPanel
                   players={players}
                   onUpdateScore={handleUpdateScore}
                   onResetAllScores={handleResetAllScores}
                   isLoading={isLoading}
                 />
-              ) : (
+              )}
+              {tab === 'leaderboard' && (
                 <Leaderboard players={players} />
               )}
             </div>

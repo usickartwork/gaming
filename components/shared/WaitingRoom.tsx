@@ -1,13 +1,16 @@
 'use client'
 
-import { UsersIcon, PlayIcon } from '@/components/shared/Icons'
-import type { Player } from '@/lib/types'
+import { UsersIcon, PlayIcon, SwordsIcon, TrophyIcon } from '@/components/shared/Icons'
+import { getGameDisplayName } from '@/lib/tournament-utils'
+import type { Player, GameMode } from '@/lib/types'
 
 interface WaitingRoomProps {
   roomCode: string
   gameName: string
   players: Player[]
   isHost: boolean
+  gameMode?: GameMode
+  onSetGameMode?: (mode: GameMode) => void
   onStartGame?: () => void
   isStarting?: boolean
 }
@@ -17,9 +20,13 @@ export function WaitingRoom({
   gameName,
   players,
   isHost,
+  gameMode = 'CLASSIC',
+  onSetGameMode,
   onStartGame,
   isStarting,
 }: WaitingRoomProps) {
+  const displayName = getGameDisplayName(gameName)
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-hidden">
       {/* Background ambient lighting */}
@@ -31,7 +38,45 @@ export function WaitingRoom({
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           Lobi Permainan
         </div>
-        <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">{gameName}</h1>
+        <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">{displayName}</h1>
+
+        {/* Mode Selector in Lobby (Host Only) */}
+        {isHost && onSetGameMode && (
+          <div className="mt-4 inline-flex items-center gap-2 p-1.5 rounded-2xl bg-slate-900/90 border border-white/10 shadow-lg">
+            <button
+              type="button"
+              onClick={() => onSetGameMode('CLASSIC')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                gameMode === 'CLASSIC'
+                  ? 'bg-emerald-500 text-slate-950 font-black shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <TrophyIcon size={14} />
+              <span>Mode Bebas (Klasik)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onSetGameMode('KNOCKOUT')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                gameMode === 'KNOCKOUT'
+                  ? 'bg-amber-400 text-slate-950 font-black shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <SwordsIcon size={14} />
+              <span>Babak Gugur (1v1)</span>
+            </button>
+          </div>
+        )}
+
+        {/* Mode Pill for Players */}
+        {!isHost && (
+          <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800 border border-white/10 text-xs text-slate-300 font-bold">
+            {gameMode === 'KNOCKOUT' ? <SwordsIcon size={13} className="text-amber-400" /> : <TrophyIcon size={13} className="text-emerald-400" />}
+            <span>Mode: {gameMode === 'KNOCKOUT' ? 'Babak Gugur (1v1 Duel)' : 'Mode Bebas (Klasik)'}</span>
+          </div>
+        )}
         
         {/* Room Code Glowing Card */}
         <div className="mt-5 inline-block glass-panel rounded-3xl p-5 sm:p-6 border border-emerald-500/30 shadow-xl shadow-emerald-950/40">
