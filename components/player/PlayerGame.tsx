@@ -166,11 +166,27 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_state, game.buzz_winner_id])
 
+  // Sync local winner state immediately when buzz_winner_id arrives from DB
+  useEffect(() => {
+    if (game.buzz_winner_id) {
+      if (game.buzz_winner_id === session.playerId) {
+        setLocalWinner(true)
+      } else {
+        setLocalWinner(false)
+        const wp = players.find((p) => p.id === game.buzz_winner_id)
+        if (wp) setLocalWinnerName(wp.name)
+      }
+    }
+  }, [game.buzz_winner_id, session.playerId, players])
+
   // Track online presence
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
 
   const me = players.find((p) => p.id === session.playerId)
-  const isWinner = localWinner === true || game.buzz_winner_id === session.playerId
+  // Player is winner ONLY if DB confirms it, or local confirmation while DB update is in-flight
+  const isWinner =
+    game.buzz_winner_id === session.playerId ||
+    (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
   const isExcluded = me?.excluded_attempt === game.current_attempt
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
@@ -254,16 +270,17 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         body: JSON.stringify({ playerId: session.playerId, pressedAt }),
       })
       const data = await res.json()
-      if (data.winner) {
+      if (data.winner === true) {
         setLocalWinner(true)
         playDingSound()
-      } else if (data.winnerId) {
+      } else {
         setLocalWinner(false)
         const matched = players.find((p) => p.id === data.winnerId)
         setLocalWinnerName(data.winnerName || matched?.name || 'Pemain Lain')
       }
     } catch (err) {
       console.error('Buzz error:', err)
+      setLocalWinner(false)
     } finally {
       setIsBuzzing(false)
     }
