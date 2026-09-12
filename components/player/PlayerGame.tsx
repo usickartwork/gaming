@@ -27,7 +27,7 @@ import {
   getGameMode,
   getTournamentState,
 } from '@/lib/tournament-utils'
-import type { Game, Player, PlayerSession } from '@/lib/types'
+import type { Game, Player, PlayerSession, TournamentPhase } from '@/lib/types'
 
 interface PlayerGameProps {
   initialGame: Game
@@ -125,20 +125,24 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
   // Tournament state helpers
-  const tStage = tournamentState?.stage ?? 'GROUPS_SETUP'
-  const inGroupA = Boolean(tournamentState?.groupA?.playerIds?.includes(session.playerId))
-  const inGroupB = Boolean(tournamentState?.groupB?.playerIds?.includes(session.playerId))
+  const phase: TournamentPhase =
+    tournamentState?.phase ??
+    (tournamentState?.stage === 'GROUP_B'
+      ? 'GROUP_B'
+      : tournamentState?.stage === 'KNOCKOUT'
+      ? 'KNOCKOUT'
+      : 'GROUP_A')
+
+  const groupAIds = tournamentState?.groupAPlayerIds || tournamentState?.groupA?.playerIds || []
+  const groupBIds = tournamentState?.groupBPlayerIds || tournamentState?.groupB?.playerIds || []
+  const inGroupA = Boolean(groupAIds.includes(session.playerId))
+  const inGroupB = Boolean(groupBIds.includes(session.playerId))
   const myGroup = inGroupA ? 'A' : inGroupB ? 'B' : null
-  const myGroupScore = inGroupA
-    ? tournamentState?.groupA?.scores[session.playerId] ?? 0
-    : inGroupB
-    ? tournamentState?.groupB?.scores[session.playerId] ?? 0
-    : 0
 
   const activeMatch = tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)
   const isDuelist = Boolean(
     gameMode === 'KNOCKOUT' &&
-    tStage === 'KNOCKOUT' &&
+    phase === 'KNOCKOUT' &&
     activeMatch &&
     (activeMatch.player1Id === session.playerId || activeMatch.player2Id === session.playerId)
   )
@@ -151,15 +155,17 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   // Can this player play/buzz right now?
   const canPlayInTournament = Boolean(
     gameMode !== 'KNOCKOUT' ||
-    (tStage === 'GROUP_A' && inGroupA) ||
-    (tStage === 'GROUP_B' && inGroupB) ||
-    (tStage === 'KNOCKOUT' && isDuelist)
+    (phase === 'GROUP_A' && inGroupA) ||
+    (phase === 'GROUP_B' && inGroupB) ||
+    (phase === 'KNOCKOUT' && isDuelist)
   )
 
   const isEliminated = Boolean(
     gameMode === 'KNOCKOUT' &&
-    ((tStage === 'GROUP_B' && inGroupA && !tournamentState?.groupA.qualifiedPlayerIds.includes(session.playerId)) ||
-      (tStage === 'KNOCKOUT' && !tournamentState?.groupA.qualifiedPlayerIds.includes(session.playerId) && !tournamentState?.groupB.qualifiedPlayerIds.includes(session.playerId)) ||
+    phase === 'KNOCKOUT' &&
+    (!tournamentState?.matches.some(
+      (m) => m.player1Id === session.playerId || m.player2Id === session.playerId
+    ) ||
       tournamentState?.matches.some(
         (m) =>
           m.status === 'FINISHED' &&
@@ -170,8 +176,9 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   const isQualifiedToKnockout = Boolean(
     gameMode === 'KNOCKOUT' &&
-    (tournamentState?.groupA.qualifiedPlayerIds.includes(session.playerId) ||
-      tournamentState?.groupB.qualifiedPlayerIds.includes(session.playerId))
+    tournamentState?.matches.some(
+      (m) => m.player1Id === session.playerId || m.player2Id === session.playerId
+    )
   )
 
   const upcomingMatch = tournamentState?.matches.find(
@@ -563,14 +570,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm" />
                   <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
-                    {tStage === 'GROUPS_SETUP'
-                      ? `Grup ${myGroup ?? '?'} • Persiapan`
-                      : tStage === 'GROUP_A'
+                    {phase === 'GROUP_A'
                       ? 'Grup B • Menonton Grup A'
-                      : tStage === 'GROUP_B'
-                      ? isQualifiedToKnockout
-                        ? 'Lolos ke Semifinal'
-                        : 'Gugur • Penonton'
+                      : phase === 'GROUP_B'
+                      ? 'Grup A • Menonton Grup B'
                       : isEliminated
                       ? 'Gugur • Penonton'
                       : upcomingMatch
@@ -594,26 +597,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
         {/* Center Content based on Stage */}
         <div className="my-auto py-6 relative z-10 text-center space-y-5 max-w-sm mx-auto w-full">
-          {tStage === 'GROUPS_SETUP' && (
-            <>
-              <div className="w-16 h-16 rounded-3xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-400 mx-auto shadow-xl">
-                <UsersIcon size={32} />
-              </div>
-              <div className="space-y-2">
-                <span className="px-3 py-1 rounded-full bg-teal-400/20 border border-teal-400/40 text-teal-300 text-[10px] font-black uppercase tracking-widest">
-                  PEMBAGIAN GRUP
-                </span>
-                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                  Kamu di Grup {myGroup ?? 'A'}
-                </h2>
-                <p className="text-slate-400 text-xs max-w-xs mx-auto">
-                  Host sedang mempersiapkan babak penyisihan. Babak Grup A akan bermain lebih dulu.
-                </p>
-              </div>
-            </>
-          )}
-
-          {tStage === 'GROUP_A' && (
+          {phase === 'GROUP_A' && (
             <>
               <div className="w-16 h-16 rounded-3xl bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-400 mx-auto shadow-xl animate-pulse">
                 <MusicIcon size={32} />
@@ -635,28 +619,26 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             </>
           )}
 
-          {tStage === 'GROUP_B' && (
+          {phase === 'GROUP_B' && (
             <>
               <div className="w-16 h-16 rounded-3xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto shadow-xl">
-                {isQualifiedToKnockout ? <CrownIcon size={32} /> : <UsersIcon size={32} />}
+                <UsersIcon size={32} />
               </div>
               <div className="space-y-2">
                 <span className="px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-[10px] font-black uppercase tracking-widest">
                   PENYISIHAN GRUP B
                 </span>
                 <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                  {isQualifiedToKnockout ? 'Kamu Lolos ke Semifinal!' : 'Grup B Sedang Bermain'}
+                  Grup B Sedang Bermain
                 </h2>
                 <p className="text-slate-300 text-xs">
-                  {isQualifiedToKnockout
-                    ? 'Hebat! Kamu berhasil menembus Top 2 Grup A dan melaju ke babak gugur BO3.'
-                    : 'Kamu berada di Grup A. Menonton pertandingan penyisihan Grup B...'}
+                  Kamu berada di <strong className="text-amber-300">Grup A</strong>. Menonton pertandingan penyisihan Grup B...
                 </p>
               </div>
             </>
           )}
 
-          {tStage === 'KNOCKOUT' && (
+          {phase === 'KNOCKOUT' && (
             <>
               <div className="w-16 h-16 rounded-3xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto shadow-xl">
                 <SwordsIcon size={32} />
@@ -786,7 +768,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
                   {isDuelist
                     ? 'DUEL 1v1 BO3'
-                    : tStage === 'GROUP_A' || tStage === 'GROUP_B'
+                    : phase === 'GROUP_A' || phase === 'GROUP_B'
                     ? `Penyisihan Grup ${myGroup}`
                     : 'Controller Aktif'}
                 </span>
@@ -810,15 +792,11 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
               <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">
                 {isDuelist
                   ? 'Skor Duel'
-                  : tStage === 'GROUP_A' || tStage === 'GROUP_B'
-                  ? 'Skor Grup'
                   : 'Skor Kamu'}
               </p>
               <p className="text-emerald-400 text-2xl font-black font-mono leading-none mt-0.5">
                 {isDuelist
                   ? myDuelScore
-                  : tStage === 'GROUP_A' || tStage === 'GROUP_B'
-                  ? myGroupScore
                   : me?.score ?? 0}
               </p>
             </div>
@@ -832,7 +810,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
               <SwordsIcon size={13} className="text-amber-400" />
               <span>Lawan: {opponentPlayer?.name ?? 'Lawan'} ({oppDuelScore} Poin)</span>
             </span>
-          ) : tStage === 'GROUP_A' || tStage === 'GROUP_B' ? (
+          ) : phase === 'GROUP_A' || phase === 'GROUP_B' ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-400/20 border border-teal-400/30 text-teal-300 font-bold text-[11px]">
               <UsersIcon size={13} className="text-teal-400" />
               <span>Babak Grup {myGroup} (Top 2 Lolos)</span>

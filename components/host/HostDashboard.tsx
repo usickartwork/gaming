@@ -27,7 +27,7 @@ import {
   getGameMode,
   getTournamentState,
 } from '@/lib/tournament-utils'
-import type { Game, Player, Song, RoundType, HostSession, GameMode } from '@/lib/types'
+import type { Game, Player, Song, RoundType, HostSession, GameMode, TournamentPhase } from '@/lib/types'
 
 interface HostDashboardProps {
   initialGame: Game
@@ -131,24 +131,23 @@ export function HostDashboard({
     [hostAction]
   )
 
+  const handleSetTournamentPhase = useCallback(
+    async (phase: TournamentPhase) => {
+      await hostAction('SET_TOURNAMENT_PHASE', { phase })
+    },
+    [hostAction]
+  )
+
   const handleShuffleGroups = useCallback(async () => {
     await hostAction('SHUFFLE_GROUPS')
   }, [hostAction])
 
   const handleStartGroupA = useCallback(async () => {
-    await hostAction('START_GROUP_A')
-  }, [hostAction])
-
-  const handleFinishGroupA = useCallback(async () => {
-    await hostAction('FINISH_GROUP_A')
+    await hostAction('SET_TOURNAMENT_PHASE', { phase: 'GROUP_A' })
   }, [hostAction])
 
   const handleStartGroupB = useCallback(async () => {
-    await hostAction('START_GROUP_B')
-  }, [hostAction])
-
-  const handleFinishGroupB = useCallback(async () => {
-    await hostAction('FINISH_GROUP_B')
+    await hostAction('SET_TOURNAMENT_PHASE', { phase: 'GROUP_B' })
   }, [hostAction])
 
   const handleResetTournament = useCallback(async () => {
@@ -392,28 +391,31 @@ export function HostDashboard({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-amber-400 text-xs font-black uppercase tracking-wider">
-                  {tournamentState?.stage === 'GROUP_A'
-                    ? 'BABAK PENYISIHAN • GRUP A'
-                    : tournamentState?.stage === 'GROUP_B'
-                    ? 'BABAK PENYISIHAN • GRUP B'
-                    : tournamentState?.stage === 'KNOCKOUT'
-                    ? `${tournamentState.matches.find((m) => m.id === tournamentState.activeMatchId)?.roundName ?? 'Babak Gugur'} • LIVE DUEL`
-                    : 'MODE TURNAMEN (PERSIAPAN)'}
+                  {(() => {
+                    const phase = tournamentState?.phase ?? (tournamentState?.stage === 'GROUP_B' ? 'GROUP_B' : tournamentState?.stage === 'KNOCKOUT' ? 'KNOCKOUT' : 'GROUP_A')
+                    if (phase === 'GROUP_A') return 'BABAK PENYISIHAN • GRUP A'
+                    if (phase === 'GROUP_B') return 'BABAK PENYISIHAN • GRUP B'
+                    if (phase === 'KNOCKOUT') {
+                      return `${tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)?.roundName ?? 'Babak Gugur'} • LIVE DUEL`
+                    }
+                    return 'MODE TURNAMEN'
+                  })()}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-black uppercase border border-amber-400/30">
-                  {tournamentState?.stage === 'KNOCKOUT' ? `TARGET: ${tournamentState.targetPoints ?? 2} POIN (BO3)` : 'TOP 2 LOLOS'}
+                  {(tournamentState?.phase ?? tournamentState?.stage) === 'KNOCKOUT' ? `TARGET: ${tournamentState?.targetPoints ?? 2} POIN (BO3)` : 'TOP 2 LOLOS'}
                 </span>
               </div>
               <p className="text-white text-base sm:text-lg font-black mt-0.5">
                 {(() => {
-                  if (tournamentState?.stage === 'GROUP_A') {
+                  const phase = tournamentState?.phase ?? (tournamentState?.stage === 'GROUP_B' ? 'GROUP_B' : tournamentState?.stage === 'KNOCKOUT' ? 'KNOCKOUT' : 'GROUP_A')
+                  if (phase === 'GROUP_A') {
                     return `Hanya Grup A yang dapat menekan buzzer. Selesaikan 5–7 lagu untuk klasemen.`
                   }
-                  if (tournamentState?.stage === 'GROUP_B') {
+                  if (phase === 'GROUP_B') {
                     return `Hanya Grup B yang dapat menekan buzzer. Selesaikan 5–7 lagu untuk klasemen.`
                   }
-                  if (tournamentState?.stage === 'KNOCKOUT') {
-                    const am = tournamentState.matches.find((m) => m.id === tournamentState.activeMatchId)
+                  if (phase === 'KNOCKOUT') {
+                    const am = tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)
                     if (!am || !am.player1Id || !am.player2Id) return 'Babak gugur BO3 aktif. Buka tab Bagan Turnamen untuk memilih duel.'
                     const p1 = players.find((p) => p.id === am.player1Id)
                     const p2 = players.find((p) => p.id === am.player2Id)
@@ -533,14 +535,13 @@ export function HostDashboard({
                 <TournamentBracket
                   tournamentState={tournamentState}
                   players={players}
+                  onSetTournamentPhase={handleSetTournamentPhase}
                   onSetActiveMatch={handleSetActiveMatch}
                   onAdvanceWinner={handleAdvanceWinner}
                   onGenerateBracket={handleGenerateBracket}
                   onShuffleGroups={handleShuffleGroups}
                   onStartGroupA={handleStartGroupA}
-                  onFinishGroupA={handleFinishGroupA}
                   onStartGroupB={handleStartGroupB}
-                  onFinishGroupB={handleFinishGroupB}
                   onResetTournament={handleResetTournament}
                   isLoading={isLoading}
                 />

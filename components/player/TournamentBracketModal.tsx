@@ -26,8 +26,16 @@ export function TournamentBracketModal({
   players,
   currentPlayerId,
 }: TournamentBracketModalProps) {
+  const phase =
+    tournamentState?.phase ??
+    (tournamentState?.stage === 'GROUP_B'
+      ? 'GROUP_B'
+      : tournamentState?.stage === 'KNOCKOUT'
+      ? 'KNOCKOUT'
+      : 'GROUP_A')
+
   const [modalTab, setModalTab] = useState<'groups' | 'knockout'>(
-    tournamentState?.stage === 'KNOCKOUT' ? 'knockout' : 'groups'
+    phase === 'KNOCKOUT' ? 'knockout' : 'groups'
   )
 
   if (!isOpen || !tournamentState) return null
@@ -39,40 +47,33 @@ export function TournamentBracketModal({
 
   const champion = getPlayer(tournamentState.championId)
 
-  const groupA = tournamentState.groupA ?? {
-    name: 'Grup A',
-    playerIds: [],
-    scores: {},
-    qualifiedPlayerIds: [],
-    status: 'UPCOMING',
-  }
+  const groupAIds = tournamentState.groupAPlayerIds || tournamentState.groupA?.playerIds || []
+  const groupBIds = tournamentState.groupBPlayerIds || tournamentState.groupB?.playerIds || []
 
-  const groupB = tournamentState.groupB ?? {
-    name: 'Grup B',
-    playerIds: [],
-    scores: {},
-    qualifiedPlayerIds: [],
-    status: 'UPCOMING',
-  }
-
-  // Sorted Group A players
-  const groupAPlayers = [...groupA.playerIds]
-    .map((id) => ({
-      player: getPlayer(id),
-      score: groupA.scores[id] ?? 0,
-      isQualified: groupA.qualifiedPlayerIds.includes(id),
-      isMe: id === currentPlayerId,
-    }))
+  // Sorted Group A players by current player.score
+  const groupAPlayers = groupAIds
+    .map((id) => {
+      const p = getPlayer(id)
+      return {
+        player: p,
+        score: p?.score ?? 0,
+        isMe: id === currentPlayerId,
+      }
+    })
+    .filter((item): item is { player: Player; score: number; isMe: boolean } => Boolean(item.player))
     .sort((a, b) => b.score - a.score)
 
-  // Sorted Group B players
-  const groupBPlayers = [...groupB.playerIds]
-    .map((id) => ({
-      player: getPlayer(id),
-      score: groupB.scores[id] ?? 0,
-      isQualified: groupB.qualifiedPlayerIds.includes(id),
-      isMe: id === currentPlayerId,
-    }))
+  // Sorted Group B players by current player.score
+  const groupBPlayers = groupBIds
+    .map((id) => {
+      const p = getPlayer(id)
+      return {
+        player: p,
+        score: p?.score ?? 0,
+        isMe: id === currentPlayerId,
+      }
+    })
+    .filter((item): item is { player: Player; score: number; isMe: boolean } => Boolean(item.player))
     .sort((a, b) => b.score - a.score)
 
   // Group matches by round for Knockout
@@ -102,7 +103,7 @@ export function TournamentBracketModal({
                 Status Mode Turnamen
               </h3>
               <p className="text-slate-400 text-xs">
-                {tournamentState.stage === 'KNOCKOUT'
+                {phase === 'KNOCKOUT'
                   ? 'Babak Gugur BO3 (First to 2 Poin)'
                   : 'Penyisihan Grup (Top 2 Lolos ke BO3)'}
               </p>
@@ -173,7 +174,7 @@ export function TournamentBracketModal({
                     <h4 className="text-white font-bold text-sm">Grup A</h4>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-slate-400">
-                    {groupA.status === 'FINISHED' ? 'Selesai' : groupA.status === 'ACTIVE' ? 'Sedang Main' : 'Menunggu'}
+                    {phase === 'GROUP_A' ? 'Sedang Main' : phase === 'GROUP_B' || phase === 'KNOCKOUT' ? 'Selesai' : 'Menunggu'}
                   </span>
                 </div>
 
@@ -197,9 +198,9 @@ export function TournamentBracketModal({
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-mono font-bold">{item.score} pts</span>
-                        {groupA.status === 'FINISHED' && item.isQualified && (
-                          <span className="text-emerald-400">
-                            <CheckIcon size={12} />
+                        {idx < 2 && (
+                          <span className="text-emerald-400 font-bold text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                            Top 2
                           </span>
                         )}
                       </div>
@@ -221,7 +222,7 @@ export function TournamentBracketModal({
                     <h4 className="text-white font-bold text-sm">Grup B</h4>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-slate-400">
-                    {groupB.status === 'FINISHED' ? 'Selesai' : groupB.status === 'ACTIVE' ? 'Sedang Main' : 'Menunggu'}
+                    {phase === 'GROUP_B' ? 'Sedang Main' : phase === 'KNOCKOUT' ? 'Selesai' : 'Menunggu'}
                   </span>
                 </div>
 
@@ -245,9 +246,9 @@ export function TournamentBracketModal({
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-mono font-bold">{item.score} pts</span>
-                        {groupB.status === 'FINISHED' && item.isQualified && (
-                          <span className="text-emerald-400">
-                            <CheckIcon size={12} />
+                        {idx < 2 && (
+                          <span className="text-emerald-400 font-bold text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                            Top 2
                           </span>
                         )}
                       </div>

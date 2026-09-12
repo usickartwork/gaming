@@ -55,21 +55,25 @@ export async function POST(
     if (mode === 'KNOCKOUT') {
       const ts = getTournamentState(game)
       if (ts) {
-        if (ts.stage === 'GROUP_A') {
-          if (!ts.groupA.playerIds.includes(playerId)) {
+        const activePhase = ts.phase || (ts.stage === 'GROUP_B' ? 'GROUP_B' : (ts.stage === 'KNOCKOUT' ? 'KNOCKOUT' : 'GROUP_A'))
+        const groupAIds = ts.groupAPlayerIds || ts.groupA?.playerIds || []
+        const groupBIds = ts.groupBPlayerIds || ts.groupB?.playerIds || []
+
+        if (activePhase === 'GROUP_A') {
+          if (!groupAIds.includes(playerId)) {
             return NextResponse.json(
-              { error: 'Buzzer saat ini hanya untuk anggota Grup A pada babak penyisihan ini!' },
+              { error: 'Buzzer saat ini hanya untuk anggota Grup A!' },
               { status: 403 }
             )
           }
-        } else if (ts.stage === 'GROUP_B') {
-          if (!ts.groupB.playerIds.includes(playerId)) {
+        } else if (activePhase === 'GROUP_B') {
+          if (!groupBIds.includes(playerId)) {
             return NextResponse.json(
-              { error: 'Buzzer saat ini hanya untuk anggota Grup B pada babak penyisihan ini!' },
+              { error: 'Buzzer saat ini hanya untuk anggota Grup B!' },
               { status: 403 }
             )
           }
-        } else if (ts.stage === 'KNOCKOUT') {
+        } else if (activePhase === 'KNOCKOUT') {
           const activeMatch = ts.matches?.find((m) => m.id === ts.activeMatchId)
           if (activeMatch && activeMatch.player1Id !== playerId && activeMatch.player2Id !== playerId) {
             return NextResponse.json(

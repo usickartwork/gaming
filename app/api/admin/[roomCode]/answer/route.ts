@@ -96,31 +96,35 @@ export async function POST(
     })
 
     if (result === 'CORRECT') {
-      // Check if tournament mode duel score should be updated
+      // Check if tournament mode score or duel should be updated
       const mode = getGameMode(game)
       let duelResult: { matchWon: boolean; winnerId: string | null } = { matchWon: false, winnerId: null }
       if (mode === 'KNOCKOUT') {
         const ts = getTournamentState(game)
-        if (ts && ts.activeMatchId) {
-          const { updatedState, matchWon, winnerId } = recordDuelPoint(
-            ts,
-            ts.activeMatchId,
-            game.buzz_winner_id
-          )
-          duelResult = { matchWon, winnerId }
-          const encodedName = encodeGameStateName(game.name, updatedState)
-          await supabase
-            .from('games')
-            .update({ name: encodedName })
-            .eq('id', game.id)
-
-          try {
+        if (ts) {
+          const activePhase = ts.phase || ts.stage
+          if (activePhase === 'KNOCKOUT' && ts.activeMatchId) {
+            const duelRes = recordDuelPoint(
+              ts,
+              ts.activeMatchId,
+              game.buzz_winner_id
+            )
+            const updatedState = duelRes.updatedState
+            duelResult = { matchWon: duelRes.matchWon, winnerId: duelRes.winnerId }
+            const encodedName = encodeGameStateName(game.name, updatedState)
             await supabase
               .from('games')
-              .update({ tournament_state: updatedState })
+              .update({ name: encodedName })
               .eq('id', game.id)
-          } catch {
-            // ignore if column does not exist
+
+            try {
+              await supabase
+                .from('games')
+                .update({ tournament_state: updatedState })
+                .eq('id', game.id)
+            } catch {
+              // ignore if column does not exist
+            }
           }
         }
       }

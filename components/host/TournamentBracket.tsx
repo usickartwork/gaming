@@ -11,15 +11,17 @@ import {
   UsersIcon,
   ArrowRightIcon,
   AlertIcon,
+  ShuffleIcon,
 } from '@/components/shared/Icons'
-import type { Player, TournamentMatch, TournamentState, TournamentStage } from '@/lib/types'
+import type { Player, TournamentMatch, TournamentState, TournamentPhase } from '@/lib/types'
 
 interface TournamentBracketProps {
   tournamentState: TournamentState | null
   players: Player[]
+  onSetTournamentPhase?: (phase: TournamentPhase) => void
   onSetActiveMatch: (matchId: string) => void
   onAdvanceWinner: (matchId: string, winnerId: string) => void
-  onGenerateBracket: (targetPoints: number) => void
+  onGenerateBracket?: (targetPoints: number) => void
   onShuffleGroups?: () => void
   onStartGroupA?: () => void
   onFinishGroupA?: () => void
@@ -32,708 +34,628 @@ interface TournamentBracketProps {
 export function TournamentBracket({
   tournamentState,
   players,
+  onSetTournamentPhase,
   onSetActiveMatch,
   onAdvanceWinner,
-  onGenerateBracket,
   onShuffleGroups,
   onStartGroupA,
-  onFinishGroupA,
   onStartGroupB,
-  onFinishGroupB,
   onResetTournament,
   isLoading = false,
 }: TournamentBracketProps) {
   const [confirmReset, setConfirmReset] = useState(false)
-  const [confirmFinishA, setConfirmFinishA] = useState(false)
-  const [confirmFinishB, setConfirmFinishB] = useState(false)
 
-  const getPlayer = (id: string | null): Player | undefined => {
+  const getPlayer = (id: string | null | undefined): Player | undefined => {
     if (!id) return undefined
     return players.find((p) => p.id === id)
   }
 
+  const phase: TournamentPhase =
+    tournamentState?.phase ??
+    (tournamentState?.stage === 'GROUP_B'
+      ? 'GROUP_B'
+      : tournamentState?.stage === 'KNOCKOUT'
+      ? 'KNOCKOUT'
+      : 'GROUP_A')
+
+  const groupAIds = tournamentState?.groupAPlayerIds || tournamentState?.groupA?.playerIds || []
+  const groupBIds = tournamentState?.groupBPlayerIds || tournamentState?.groupB?.playerIds || []
+
+  // Group A players sorted by current player.score
+  const groupAPlayers = groupAIds
+    .map((id) => getPlayer(id))
+    .filter((p): p is Player => Boolean(p))
+    .sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))
+
+  // Group B players sorted by current player.score
+  const groupBPlayers = groupBIds
+    .map((id) => getPlayer(id))
+    .filter((p): p is Player => Boolean(p))
+    .sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))
+
+  const handlePhaseChange = (newPhase: TournamentPhase) => {
+    if (onSetTournamentPhase) {
+      onSetTournamentPhase(newPhase)
+    } else if (newPhase === 'GROUP_A' && onStartGroupA) {
+      onStartGroupA()
+    } else if (newPhase === 'GROUP_B' && onStartGroupB) {
+      onStartGroupB()
+    }
+  }
+
   const champion = getPlayer(tournamentState?.championId ?? null)
-  const stage: TournamentStage = tournamentState?.stage ?? 'GROUPS_SETUP'
-
-  const groupA = tournamentState?.groupA ?? {
-    name: 'Grup A',
-    playerIds: [],
-    scores: {},
-    qualifiedPlayerIds: [],
-    status: 'UPCOMING',
-  }
-
-  const groupB = tournamentState?.groupB ?? {
-    name: 'Grup B',
-    playerIds: [],
-    scores: {},
-    qualifiedPlayerIds: [],
-    status: 'UPCOMING',
-  }
-
-  // Sorted Group A players by live score
-  const groupAPlayers = [...groupA.playerIds]
-    .map((id) => ({
-      player: getPlayer(id),
-      score: groupA.scores[id] ?? 0,
-      isQualified: groupA.qualifiedPlayerIds.includes(id),
-    }))
-    .sort((a, b) => b.score - a.score)
-
-  // Sorted Group B players by live score
-  const groupBPlayers = [...groupB.playerIds]
-    .map((id) => ({
-      player: getPlayer(id),
-      score: groupB.scores[id] ?? 0,
-      isQualified: groupB.qualifiedPlayerIds.includes(id),
-    }))
-    .sort((a, b) => b.score - a.score)
-
-  // Group matches by round for Knockout
-  const matchesByRound: Record<number, TournamentMatch[]> = {}
-  if (tournamentState?.matches) {
-    tournamentState.matches.forEach((m) => {
-      if (!matchesByRound[m.roundIndex]) {
-        matchesByRound[m.roundIndex] = []
-      }
-      matchesByRound[m.roundIndex].push(m)
-    })
-  }
-
-  const roundIndices = Object.keys(matchesByRound)
-    .map(Number)
-    .sort((a, b) => a - b)
+  const matches = tournamentState?.matches || []
 
   return (
     <div className="space-y-6">
-      {/* ── Stage Progress Indicator ──────────────────────── */}
-      <div className="glass-panel rounded-3xl p-4 sm:p-5 border border-white/10 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* ── Top Header & Actions ──────────────────────── */}
+      <div className="glass-panel rounded-3xl p-5 border border-white/10 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <SwordsIcon size={20} />
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <SwordsIcon size={22} />
             </div>
             <div>
-              <h3 className="text-white font-extrabold text-base">Mode Turnamen Komplit</h3>
-              <p className="text-slate-400 text-xs">
-                Penyisihan Grup A & B (Top 2 Lolos) - Babak Gugur BO3 (First to 2 Poin)
+              <h3 className="text-white font-extrabold text-base sm:text-lg">
+                Klasemen & Babak Gugur (BO3)
+              </h3>
+              <p className="text-slate-400 text-xs sm:text-sm">
+                Mainkan 5–7 lagu per grup untuk klasemen (Top 2 lolos), lalu lanjut duel BO3.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onShuffleGroups?.()}
-              disabled={isLoading || players.length < 2 || stage === 'KNOCKOUT'}
-              className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2 px-3.5 rounded-xl border border-white/10 transition-all active:scale-95 disabled:opacity-40"
-            >
-              <RefreshIcon size={12} />
-              <span>Acak Grup</span>
-            </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {onShuffleGroups && (
+              <button
+                type="button"
+                onClick={onShuffleGroups}
+                disabled={isLoading}
+                className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95"
+                title="Acak ulang pembagian pemain Grup A dan Grup B"
+              >
+                <ShuffleIcon size={14} />
+                <span>Acak Ulang Grup</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setConfirmReset(true)}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-300 text-xs font-bold py-2 px-3 rounded-xl border border-red-500/30 transition-all active:scale-95 disabled:opacity-40"
+              className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition-all flex items-center gap-1.5 active:scale-95"
             >
+              <RefreshIcon size={14} />
               <span>Reset Turnamen</span>
             </button>
           </div>
         </div>
 
-        {/* Horizontal Step Indicator */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-white/5 text-xs">
-          <div
-            className={`p-2.5 rounded-2xl border flex items-center gap-2 transition-all ${
-              stage === 'GROUPS_SETUP'
-                ? 'bg-amber-400/20 border-amber-400/50 text-amber-300 font-black ring-1 ring-amber-400/40'
-                : 'bg-slate-900/60 border-white/5 text-slate-400 font-medium'
+        {/* ── Phase Switcher Tabs ──────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
+          {/* Phase 1: Group A */}
+          <button
+            type="button"
+            onClick={() => handlePhaseChange('GROUP_A')}
+            disabled={isLoading}
+            className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden ${
+              phase === 'GROUP_A'
+                ? 'bg-emerald-500/15 border-emerald-500/60 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/50'
+                : 'bg-slate-900/60 border-white/5 hover:border-white/20 hover:bg-slate-900/90'
             }`}
           >
-            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold">1</span>
-            <span className="truncate">Pembagian Grup</span>
-          </div>
+            <div className="flex items-center justify-between">
+              <span
+                className={`text-xs font-black uppercase tracking-wider ${
+                  phase === 'GROUP_A' ? 'text-emerald-400' : 'text-slate-400'
+                }`}
+              >
+                1. Giliran Grup A
+              </span>
+              {phase === 'GROUP_A' && (
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                </span>
+              )}
+            </div>
+            <p className="text-white font-bold text-sm mt-1">Grup A Bermain</p>
+            <p className="text-slate-400 text-[11px] mt-0.5">
+              Hanya Grup A yang dapat menekan buzzer
+            </p>
+          </button>
 
-          <div
-            className={`p-2.5 rounded-2xl border flex items-center gap-2 transition-all ${
-              stage === 'GROUP_A'
-                ? 'bg-teal-500/20 border-teal-400/50 text-teal-300 font-black ring-1 ring-teal-400/40 animate-pulse'
-                : groupA.status === 'FINISHED'
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 font-bold'
-                : 'bg-slate-900/60 border-white/5 text-slate-400 font-medium'
+          {/* Phase 2: Group B */}
+          <button
+            type="button"
+            onClick={() => handlePhaseChange('GROUP_B')}
+            disabled={isLoading}
+            className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden ${
+              phase === 'GROUP_B'
+                ? 'bg-teal-500/15 border-teal-500/60 shadow-lg shadow-teal-500/10 ring-1 ring-teal-500/50'
+                : 'bg-slate-900/60 border-white/5 hover:border-white/20 hover:bg-slate-900/90'
             }`}
           >
-            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold">2</span>
-            <span className="truncate">Babak Grup A</span>
-          </div>
+            <div className="flex items-center justify-between">
+              <span
+                className={`text-xs font-black uppercase tracking-wider ${
+                  phase === 'GROUP_B' ? 'text-teal-400' : 'text-slate-400'
+                }`}
+              >
+                2. Giliran Grup B
+              </span>
+              {phase === 'GROUP_B' && (
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-teal-500" />
+                </span>
+              )}
+            </div>
+            <p className="text-white font-bold text-sm mt-1">Grup B Bermain</p>
+            <p className="text-slate-400 text-[11px] mt-0.5">
+              Hanya Grup B yang dapat menekan buzzer
+            </p>
+          </button>
 
-          <div
-            className={`p-2.5 rounded-2xl border flex items-center gap-2 transition-all ${
-              stage === 'GROUP_B'
-                ? 'bg-teal-500/20 border-teal-400/50 text-teal-300 font-black ring-1 ring-teal-400/40 animate-pulse'
-                : groupB.status === 'FINISHED'
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 font-bold'
-                : 'bg-slate-900/60 border-white/5 text-slate-400 font-medium'
+          {/* Phase 3: Knockout BO3 */}
+          <button
+            type="button"
+            onClick={() => handlePhaseChange('KNOCKOUT')}
+            disabled={isLoading}
+            className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden ${
+              phase === 'KNOCKOUT'
+                ? 'bg-amber-500/15 border-amber-500/60 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500/50'
+                : 'bg-slate-900/60 border-white/5 hover:border-white/20 hover:bg-slate-900/90'
             }`}
           >
-            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold">3</span>
-            <span className="truncate">Babak Grup B</span>
-          </div>
-
-          <div
-            className={`p-2.5 rounded-2xl border flex items-center gap-2 transition-all ${
-              stage === 'KNOCKOUT'
-                ? 'bg-amber-400/20 border-amber-400/50 text-amber-300 font-black ring-1 ring-amber-400/40'
-                : 'bg-slate-900/60 border-white/5 text-slate-400 font-medium'
-            }`}
-          >
-            <span className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-bold">4</span>
-            <span className="truncate">Babak Gugur BO3</span>
-          </div>
+            <div className="flex items-center justify-between">
+              <span
+                className={`text-xs font-black uppercase tracking-wider ${
+                  phase === 'KNOCKOUT' ? 'text-amber-400' : 'text-slate-400'
+                }`}
+              >
+                3. Babak Gugur BO3
+              </span>
+              {phase === 'KNOCKOUT' && (
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+                </span>
+              )}
+            </div>
+            <p className="text-white font-bold text-sm mt-1">Top 2 A vs Top 2 B</p>
+            <p className="text-slate-400 text-[11px] mt-0.5">
+              Duel 1v1 BO3 (First to 2 Poin)
+            </p>
+          </button>
         </div>
       </div>
 
-      {/* Confirmation modal for reset tournament */}
+      {/* ── Confirm Reset Modal ──────────────────────── */}
       {confirmReset && (
-        <div className="glass-panel p-5 rounded-3xl border border-red-500/40 bg-red-950/20 space-y-3">
-          <p className="text-white text-sm font-bold">
-            Atur ulang seluruh tahapan turnamen untuk {players.length} pemain?
-          </p>
-          <p className="text-slate-400 text-xs">
-            Pemain akan diacak ulang ke Grup A & B, skor grup dan riwayat bagan akan direset.
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                onResetTournament()
-                setConfirmReset(false)
-              }}
-              disabled={isLoading}
-              className="bg-red-500 hover:bg-red-400 text-white font-black text-xs py-2 px-4 rounded-xl transition-all"
-            >
-              Ya, Reset Turnamen
-            </button>
-            <button
-              onClick={() => setConfirmReset(false)}
-              className="bg-slate-800 text-slate-300 font-bold text-xs py-2 px-4 rounded-xl"
-            >
-              Batal
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Champion Banner */}
-      {champion && (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 border-2 border-amber-400/50 p-6 sm:p-8 text-center shadow-2xl space-y-3">
-          <div className="w-16 h-16 rounded-3xl bg-amber-400 text-slate-950 flex items-center justify-center mx-auto shadow-xl shadow-amber-400/30 animate-bounce">
-            <CrownIcon size={36} />
-          </div>
-          <p className="text-amber-400 text-xs font-black uppercase tracking-widest">
-            SANG JUARA TURNAMEN
-          </p>
-          <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
-            {champion.name.toUpperCase()}
-          </h2>
-          <p className="text-slate-300 text-sm max-w-md mx-auto">
-            Selamat! Berhasil menjuarai Turnamen Babak Gugur BO3 Tebak Lagu!
-          </p>
-        </div>
-      )}
-
-      {/* ── STAGE 1, 2, 3: GROUPS SECTION ──────────────────────── */}
-      {stage !== 'KNOCKOUT' && (
-        <div className="space-y-6">
-          {/* Stage Action Prompt */}
-          <div className="glass-panel rounded-3xl p-5 border border-white/10 shadow-lg bg-slate-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <span className="text-[11px] font-black uppercase tracking-wider text-amber-400">
-                {stage === 'GROUPS_SETUP'
-                  ? 'TAHAP PERSIAPAN GRUP'
-                  : stage === 'GROUP_A'
-                  ? 'SEDANG BERLANGSUNG: GRUP A'
-                  : 'SEDANG BERLANGSUNG: GRUP B'}
-              </span>
-              <h4 className="text-white font-extrabold text-base mt-0.5">
-                {stage === 'GROUPS_SETUP' && 'Bagi pemain ke Grup A & B, lalu mulai babak penyisihan!'}
-                {stage === 'GROUP_A' && 'Putar 5–7 lagu untuk Grup A. Top 2 pemain teratas akan lolos!'}
-                {stage === 'GROUP_B' && 'Putar 5–7 lagu untuk Grup B. Top 2 pemain teratas akan lolos!'}
-              </h4>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-panel rounded-3xl p-6 max-w-sm w-full border border-rose-500/40 bg-slate-950 shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
+              <AlertIcon size={24} />
             </div>
-
-            <div className="flex items-center gap-2">
-              {stage === 'GROUPS_SETUP' && (
-                <button
-                  type="button"
-                  onClick={() => onStartGroupA?.()}
-                  disabled={isLoading || groupA.playerIds.length === 0}
-                  className="bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-slate-950 font-black px-5 py-3 rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-teal-500/20 transition-all active:scale-95 disabled:opacity-40"
-                >
-                  <PlayIcon size={14} />
-                  <span>Mulai Babak Grup A</span>
-                </button>
-              )}
-
-              {stage === 'GROUP_A' && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmFinishA(true)}
-                  disabled={isLoading}
-                  className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black px-5 py-3 rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all active:scale-95 disabled:opacity-40"
-                >
-                  <span>Selesaikan Grup A -&gt; Lanjut Grup B</span>
-                  <ArrowRightIcon size={14} />
-                </button>
-              )}
-
-              {stage === 'GROUP_B' && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmFinishB(true)}
-                  disabled={isLoading}
-                  className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black px-5 py-3 rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all active:scale-95 disabled:opacity-40"
-                >
-                  <SwordsIcon size={14} />
-                  <span>Kunci Hasil & Mulai Babak Gugur BO3</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Confirm Finish A */}
-          {confirmFinishA && (
-            <div className="glass-panel p-5 rounded-3xl border border-amber-400/40 bg-amber-950/20 space-y-3">
-              <p className="text-white text-sm font-bold">
-                Kunci hasil klasemen Grup A dan lanjutkan ke Grup B?
-              </p>
+            <div className="text-center space-y-1">
+              <h4 className="text-white font-black text-lg">Reset Turnamen?</h4>
               <p className="text-slate-400 text-xs">
-                2 pemain teratas Grup A ({groupAPlayers.slice(0, 2).map((x) => x.player?.name).filter(Boolean).join(', ') || 'Top 2'}) akan melaju ke Semifinal BO3.
+                Mengembalikan turnamen ke awal pembagian grup. Poin pemain tidak akan hilang.
               </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    onFinishGroupA?.()
-                    onStartGroupB?.()
-                    setConfirmFinishA(false)
-                  }}
-                  disabled={isLoading}
-                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-2 px-4 rounded-xl transition-all"
-                >
-                  Ya, Kunci & Mulai Grup B
-                </button>
-                <button
-                  onClick={() => setConfirmFinishA(false)}
-                  className="bg-slate-800 text-slate-300 font-bold text-xs py-2 px-4 rounded-xl"
-                >
-                  Batal
-                </button>
-              </div>
             </div>
-          )}
-
-          {/* Confirm Finish B */}
-          {confirmFinishB && (
-            <div className="glass-panel p-5 rounded-3xl border border-amber-400/40 bg-amber-950/20 space-y-3">
-              <p className="text-white text-sm font-bold">
-                Kunci hasil klasemen Grup B dan mulai Babak Gugur BO3?
-              </p>
-              <p className="text-slate-400 text-xs">
-                2 pemain teratas Grup B ({groupBPlayers.slice(0, 2).map((x) => x.player?.name).filter(Boolean).join(', ') || 'Top 2'}) akan bertanding di Semifinal 1 & 2 format Best-of-3!
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    onFinishGroupB?.()
-                    setConfirmFinishB(false)
-                  }}
-                  disabled={isLoading}
-                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs py-2 px-4 rounded-xl transition-all"
-                >
-                  Ya, Masuk ke Babak Gugur BO3!
-                </button>
-                <button
-                  onClick={() => setConfirmFinishB(false)}
-                  className="bg-slate-800 text-slate-300 font-bold text-xs py-2 px-4 rounded-xl"
-                >
-                  Batal
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Groups Side-by-Side Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* GRUP A CARD */}
-            <div
-              className={`glass-panel rounded-3xl p-5 border transition-all ${
-                stage === 'GROUP_A'
-                  ? 'border-teal-400/70 bg-teal-950/20 ring-2 ring-teal-400/30'
-                  : 'border-white/10 bg-slate-900/60'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-8 h-8 rounded-xl bg-teal-400/20 text-teal-300 flex items-center justify-center font-black text-sm">
-                    A
-                  </span>
-                  <div>
-                    <h4 className="text-white font-black text-base">GRUP A</h4>
-                    <p className="text-slate-400 text-xs">{groupAPlayers.length} Pemain</p>
-                  </div>
-                </div>
-
-                {stage === 'GROUP_A' ? (
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-400/20 text-teal-300 border border-teal-400/40 animate-pulse">
-                    SEDANG MAIN (BUZZER AKTIF)
-                  </span>
-                ) : groupA.status === 'FINISHED' ? (
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                    SELESAI (TOP 2 LOLOS)
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-400">
-                    MENUNGGU
-                  </span>
-                )}
-              </div>
-
-              {/* Group A Players List */}
-              <div className="space-y-2">
-                {groupAPlayers.map((item, idx) => {
-                  const isTop2 = idx < 2
-                  return (
-                    <div
-                      key={item.player?.id ?? idx}
-                      className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                        isTop2
-                          ? 'bg-teal-500/10 border-teal-500/30 text-teal-200'
-                          : 'bg-slate-950/50 border-white/5 text-slate-400'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span
-                          className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center ${
-                            isTop2
-                              ? 'bg-teal-400 text-slate-950 font-black'
-                              : 'bg-white/10 text-slate-400'
-                          }`}
-                        >
-                          #{idx + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-white truncate">
-                            {item.player?.name ?? 'Pemain'}
-                          </p>
-                          <span className="text-[10px] font-semibold">
-                            {isTop2 ? (
-                              <span className="text-teal-300 font-bold">Zona Lolos Semifinal</span>
-                            ) : (
-                              <span className="text-slate-500">Zona Gugur</span>
-                            )}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-sm text-teal-400">
-                          {item.score} <span className="text-[10px] text-slate-400 font-normal">pts</span>
-                        </span>
-                        {groupA.status === 'FINISHED' && item.isQualified && (
-                          <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                            <CheckIcon size={12} />
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* GRUP B CARD */}
-            <div
-              className={`glass-panel rounded-3xl p-5 border transition-all ${
-                stage === 'GROUP_B'
-                  ? 'border-teal-400/70 bg-teal-950/20 ring-2 ring-teal-400/30'
-                  : 'border-white/10 bg-slate-900/60'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-8 h-8 rounded-xl bg-teal-400/20 text-teal-300 flex items-center justify-center font-black text-sm">
-                    B
-                  </span>
-                  <div>
-                    <h4 className="text-white font-black text-base">GRUP B</h4>
-                    <p className="text-slate-400 text-xs">{groupBPlayers.length} Pemain</p>
-                  </div>
-                </div>
-
-                {stage === 'GROUP_B' ? (
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-400/20 text-teal-300 border border-teal-400/40 animate-pulse">
-                    SEDANG MAIN (BUZZER AKTIF)
-                  </span>
-                ) : groupB.status === 'FINISHED' ? (
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                    SELESAI (TOP 2 LOLOS)
-                  </span>
-                ) : (
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-400">
-                    MENUNGGU GILIRAN
-                  </span>
-                )}
-              </div>
-
-              {/* Group B Players List */}
-              <div className="space-y-2">
-                {groupBPlayers.map((item, idx) => {
-                  const isTop2 = idx < 2
-                  return (
-                    <div
-                      key={item.player?.id ?? idx}
-                      className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                        isTop2
-                          ? 'bg-teal-500/10 border-teal-500/30 text-teal-200'
-                          : 'bg-slate-950/50 border-white/5 text-slate-400'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span
-                          className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center ${
-                            isTop2
-                              ? 'bg-teal-400 text-slate-950 font-black'
-                              : 'bg-white/10 text-slate-400'
-                          }`}
-                        >
-                          #{idx + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-white truncate">
-                            {item.player?.name ?? 'Pemain'}
-                          </p>
-                          <span className="text-[10px] font-semibold">
-                            {isTop2 ? (
-                              <span className="text-teal-300 font-bold">Zona Lolos Semifinal</span>
-                            ) : (
-                              <span className="text-slate-500">Zona Gugur</span>
-                            )}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-sm text-teal-400">
-                          {item.score} <span className="text-[10px] text-slate-400 font-normal">pts</span>
-                        </span>
-                        {groupB.status === 'FINISHED' && item.isQualified && (
-                          <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                            <CheckIcon size={12} />
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmReset(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold text-xs border border-white/10"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onResetTournament()
+                  setConfirmReset(false)
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs"
+              >
+                Ya, Reset
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── STAGE 4: KNOCKOUT BO3 STAGE ──────────────────────── */}
-      {stage === 'KNOCKOUT' && (
-        <div className="space-y-6">
-          <div className="glass-panel rounded-3xl p-5 border border-white/10 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                <SwordsIcon size={20} />
+      {/* ── Section 1: Group Standings (Grup A & Grup B) ──────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Grup A Card */}
+        <div
+          className={`glass-panel rounded-3xl p-5 border transition-all ${
+            phase === 'GROUP_A'
+              ? 'border-emerald-500/50 bg-emerald-950/20 shadow-xl'
+              : 'border-white/10 bg-slate-900/50'
+          }`}
+        >
+          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-sm">
+                A
               </div>
               <div>
-                <h3 className="text-white font-extrabold text-base">Babak Gugur BO3 (Best of 3)</h3>
+                <h4 className="text-white font-black text-base">Klasemen Grup A</h4>
+                <p className="text-slate-400 text-xs">{groupAPlayers.length} Pemain</p>
+              </div>
+            </div>
+            {phase === 'GROUP_A' ? (
+              <span className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Sedang Bermain
+              </span>
+            ) : (
+              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400 text-xs font-bold">
+                {phase === 'GROUP_B' ? 'Selesai Bermain' : 'Menunggu'}
+              </span>
+            )}
+          </div>
+
+          {/* Group A Player Table */}
+          <div className="mt-3 space-y-2">
+            {groupAPlayers.length === 0 ? (
+              <p className="text-center py-6 text-slate-500 text-xs">Belum ada pemain di Grup A</p>
+            ) : (
+              groupAPlayers.map((player, idx) => {
+                const isTop2 = idx < 2
+                return (
+                  <div
+                    key={player.id}
+                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
+                      isTop2
+                        ? 'bg-emerald-500/10 border-emerald-500/30'
+                        : 'bg-slate-900/40 border-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-6 text-center font-black text-sm ${
+                          idx === 0
+                            ? 'text-amber-400'
+                            : idx === 1
+                            ? 'text-slate-300'
+                            : 'text-slate-600'
+                        }`}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-bold text-sm">{player.name}</span>
+                          {isTop2 && (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase tracking-wider border border-emerald-500/30">
+                              Lolos Top 2
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-slate-500 text-[11px]">
+                          {isTop2 ? 'Zona Lolos ke Babak Gugur' : 'Zona Gugur'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-emerald-400 font-mono font-black text-base">
+                        {player.score ?? 0}
+                      </span>
+                      <span className="text-slate-500 text-xs ml-1">pts</span>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {phase === 'GROUP_A' && (
+            <div className="mt-4 pt-3 border-t border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => handlePhaseChange('GROUP_B')}
+                disabled={isLoading}
+                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 active:scale-95"
+              >
+                <span>Grup A Selesai, Lanjut Grup B</span>
+                <ArrowRightIcon size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Grup B Card */}
+        <div
+          className={`glass-panel rounded-3xl p-5 border transition-all ${
+            phase === 'GROUP_B'
+              ? 'border-teal-500/50 bg-teal-950/20 shadow-xl'
+              : 'border-white/10 bg-slate-900/50'
+          }`}
+        >
+          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center font-black text-sm">
+                B
+              </div>
+              <div>
+                <h4 className="text-white font-black text-base">Klasemen Grup B</h4>
+                <p className="text-slate-400 text-xs">{groupBPlayers.length} Pemain</p>
+              </div>
+            </div>
+            {phase === 'GROUP_B' ? (
+              <span className="px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-400 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+                Sedang Bermain
+              </span>
+            ) : (
+              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-slate-400 text-xs font-bold">
+                {phase === 'KNOCKOUT' ? 'Selesai Bermain' : 'Menunggu'}
+              </span>
+            )}
+          </div>
+
+          {/* Group B Player Table */}
+          <div className="mt-3 space-y-2">
+            {groupBPlayers.length === 0 ? (
+              <p className="text-center py-6 text-slate-500 text-xs">Belum ada pemain di Grup B</p>
+            ) : (
+              groupBPlayers.map((player, idx) => {
+                const isTop2 = idx < 2
+                return (
+                  <div
+                    key={player.id}
+                    className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
+                      isTop2
+                        ? 'bg-teal-500/10 border-teal-500/30'
+                        : 'bg-slate-900/40 border-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-6 text-center font-black text-sm ${
+                          idx === 0
+                            ? 'text-amber-400'
+                            : idx === 1
+                            ? 'text-slate-300'
+                            : 'text-slate-600'
+                        }`}
+                      >
+                        #{idx + 1}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-bold text-sm">{player.name}</span>
+                          {isTop2 && (
+                            <span className="px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 text-[10px] font-black uppercase tracking-wider border border-teal-500/30">
+                              Lolos Top 2
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-slate-500 text-[11px]">
+                          {isTop2 ? 'Zona Lolos ke Babak Gugur' : 'Zona Gugur'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-teal-400 font-mono font-black text-base">
+                        {player.score ?? 0}
+                      </span>
+                      <span className="text-slate-500 text-xs ml-1">pts</span>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          {phase === 'GROUP_B' && (
+            <div className="mt-4 pt-3 border-t border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => handlePhaseChange('KNOCKOUT')}
+                disabled={isLoading}
+                className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shadow-lg shadow-amber-400/20 transition-all flex items-center gap-2 active:scale-95"
+              >
+                <span>Grup B Selesai, Mulai Babak Gugur BO3</span>
+                <ArrowRightIcon size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Section 2: Knockout BO3 Bracket ──────────────────────── */}
+      {phase === 'KNOCKOUT' && (
+        <div className="glass-panel rounded-3xl p-5 border border-amber-500/40 bg-gradient-to-b from-amber-950/10 to-slate-950/60 shadow-2xl space-y-5">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-400/20">
+                <TrophyIcon size={20} />
+              </div>
+              <div>
+                <h4 className="text-white font-black text-lg">Bagan Babak Gugur (BO3)</h4>
                 <p className="text-slate-400 text-xs">
-                  4 Pemain Lolos (Top 2 Grup A & B). Target duel: First to 2 Poin!
+                  Sistem Best of 3 (Pemain pertama yang mencapai 2 poin memenangkan duel).
                 </p>
               </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <span className="px-3 py-1.5 rounded-xl bg-amber-400/20 border border-amber-400/40 text-amber-300 font-black text-xs">
-                FORMAT: BEST OF 3 (2 POIN)
-              </span>
-            </div>
+            <span className="px-3 py-1 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-black uppercase">
+              Target: 2 Poin
+            </span>
           </div>
 
-          {/* Interactive Visual Knockout Tree */}
-          {tournamentState && tournamentState.matches.length > 0 && (
-            <div className="overflow-x-auto pb-4">
-              <div className="flex gap-6 min-w-max items-start">
-                {roundIndices.map((roundIdx) => {
-                  const roundMatches = matchesByRound[roundIdx]
-                  const roundName = roundMatches[0]?.roundName ?? `Babak ${roundIdx + 1}`
-                  const isFinal = roundIdx === roundIndices.length - 1
-
-                  return (
-                    <div key={roundIdx} className="w-72 sm:w-80 space-y-4 shrink-0">
-                      {/* Round Header */}
-                      <div className="flex items-center justify-between px-2">
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                          {isFinal ? <TrophyIcon size={14} className="text-amber-400" /> : <SwordsIcon size={14} className="text-teal-400" />}
-                          <span>{roundName}</span>
-                        </span>
-                        <span className="text-[11px] font-bold text-slate-500 bg-white/5 px-2 py-0.5 rounded-full">
-                          {roundMatches.length} Match
-                        </span>
-                      </div>
-
-                      {/* Matches List */}
-                      <div className="space-y-4">
-                        {roundMatches.map((m, mIdx) => {
-                          const p1 = getPlayer(m.player1Id)
-                          const p2 = getPlayer(m.player2Id)
-                          const isP1Winner = m.winnerId === m.player1Id && m.winnerId !== null
-                          const isP2Winner = m.winnerId === m.player2Id && m.winnerId !== null
-                          const isActive = m.id === tournamentState.activeMatchId
-                          const canStart = m.status === 'UPCOMING' && m.player1Id && m.player2Id
-
-                          return (
-                            <div
-                              key={m.id}
-                              className={`glass-panel rounded-2xl p-4 border transition-all ${
-                                isActive
-                                  ? 'border-amber-400/80 bg-amber-950/20 shadow-xl shadow-amber-500/10 ring-2 ring-amber-400/30'
-                                  : m.status === 'FINISHED'
-                                  ? 'border-white/10 bg-slate-900/60 opacity-90'
-                                  : 'border-white/5 bg-slate-900/80'
-                              }`}
-                            >
-                              {/* Match Card Header */}
-                              <div className="flex items-center justify-between text-[11px] mb-3">
-                                <span className="font-bold text-slate-400">
-                                  {m.roundName || `Match #${mIdx + 1}`}
-                                </span>
-                                {isActive ? (
-                                  <span className="px-2 py-0.5 rounded-full font-black uppercase tracking-widest text-[10px] bg-amber-400/20 text-amber-300 border border-amber-400/40 animate-pulse">
-                                    SEDANG DUEL
-                                  </span>
-                                ) : m.status === 'FINISHED' ? (
-                                  <span className="px-2 py-0.5 rounded-full font-bold uppercase tracking-widest text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                                    SELESAI
-                                  </span>
-                                ) : (
-                                  <span className="px-2 py-0.5 rounded-full font-bold uppercase tracking-widest text-[10px] bg-slate-800 text-slate-400">
-                                    MENUNGGU
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Player 1 Row */}
-                              <div
-                                className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
-                                  isP1Winner
-                                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-200'
-                                    : 'bg-slate-950/60 text-slate-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                  <span className="w-5 h-5 rounded-full bg-white/5 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                    1
-                                  </span>
-                                  <span className="text-xs font-bold truncate">
-                                    {p1 ? p1.name : m.player1Id ? 'Menunggu' : 'Menunggu Pemenang'}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono font-black text-sm text-amber-400">
-                                    {m.player1Score}
-                                  </span>
-                                  {isP1Winner && (
-                                    <span className="w-5 h-5 rounded-full bg-emerald-500/30 text-emerald-400 flex items-center justify-center">
-                                      <CheckIcon size={12} />
-                                    </span>
-                                  )}
-                                  {m.status !== 'FINISHED' && p1 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => onAdvanceWinner(m.id, p1.id)}
-                                      title="Menangkan Pemain 1 secara manual"
-                                      disabled={isLoading}
-                                      className="text-[10px] text-slate-500 hover:text-emerald-300 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10"
-                                    >
-                                      Loloskan
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* VS Divider */}
-                              <div className="flex items-center justify-center my-1.5">
-                                <span className="text-[10px] font-black tracking-widest text-slate-500 uppercase">
-                                  VS
-                                </span>
-                              </div>
-
-                              {/* Player 2 Row */}
-                              <div
-                                className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${
-                                  isP2Winner
-                                    ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-200'
-                                    : 'bg-slate-950/60 text-slate-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                  <span className="w-5 h-5 rounded-full bg-white/5 text-[10px] font-bold flex items-center justify-center shrink-0">
-                                    2
-                                  </span>
-                                  <span className="text-xs font-bold truncate">
-                                    {p2 ? p2.name : m.player2Id ? 'Menunggu' : 'Menunggu Pemenang'}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono font-black text-sm text-amber-400">
-                                    {m.player2Score}
-                                  </span>
-                                  {isP2Winner && (
-                                    <span className="w-5 h-5 rounded-full bg-emerald-500/30 text-emerald-400 flex items-center justify-center">
-                                      <CheckIcon size={12} />
-                                    </span>
-                                  )}
-                                  {m.status !== 'FINISHED' && p2 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => onAdvanceWinner(m.id, p2.id)}
-                                      title="Menangkan Pemain 2 secara manual"
-                                      disabled={isLoading}
-                                      className="text-[10px] text-slate-500 hover:text-emerald-300 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10"
-                                    >
-                                      Loloskan
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Action Button */}
-                              {canStart && (
-                                <button
-                                  type="button"
-                                  onClick={() => onSetActiveMatch(m.id)}
-                                  disabled={isLoading}
-                                  className="mt-3 w-full bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-md shadow-amber-400/20"
-                                >
-                                  <PlayIcon size={13} />
-                                  <span>Mulai Duel Ini</span>
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
+          {/* Champion Banner if finished */}
+          {champion && (
+            <div className="p-5 rounded-3xl bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 border border-amber-400/50 text-center space-y-2 shadow-xl shadow-amber-500/10 animate-bounce-slow">
+              <div className="w-14 h-14 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center mx-auto shadow-lg shadow-amber-400/30">
+                <CrownIcon size={30} />
               </div>
+              <h3 className="text-amber-300 font-black text-xs uppercase tracking-widest">
+                JUARA TURNAMEN GUESS THE SONG
+              </h3>
+              <p className="text-white font-black text-2xl sm:text-3xl tracking-tight">
+                {champion.name}
+              </p>
+              <p className="text-slate-400 text-xs">
+                Selamat! Telah menjuarai seluruh rangkaian babak penyisihan hingga grand final.
+              </p>
             </div>
           )}
+
+          {/* Matches Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {matches.map((match) => {
+              const p1 = getPlayer(match.player1Id)
+              const p2 = getPlayer(match.player2Id)
+              const isActive = match.id === tournamentState?.activeMatchId
+              const isFinished = match.status === 'FINISHED'
+              const winner = getPlayer(match.winnerId)
+              const isPlayable = Boolean(p1 && p2 && !isFinished)
+
+              return (
+                <div
+                  key={match.id}
+                  className={`rounded-2xl p-4 border transition-all flex flex-col justify-between ${
+                    isActive
+                      ? 'bg-amber-500/10 border-amber-400/60 shadow-lg shadow-amber-500/20 ring-1 ring-amber-400/50'
+                      : isFinished
+                      ? 'bg-slate-900/30 border-white/5 opacity-80'
+                      : 'bg-slate-900/60 border-white/10'
+                  }`}
+                >
+                  <div>
+                    {/* Match Title & Status */}
+                    <div className="flex items-center justify-between pb-2 mb-3 border-b border-white/5">
+                      <span className="text-white font-black text-xs tracking-wider">
+                        {match.roundName}
+                      </span>
+                      {isActive ? (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-black uppercase flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                          Duel Aktif
+                        </span>
+                      ) : isFinished ? (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase">
+                          Selesai
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-white/5 text-slate-400 text-[10px] font-bold">
+                          Menunggu
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Duelists */}
+                    <div className="space-y-2">
+                      {/* Player 1 */}
+                      <div
+                        className={`flex items-center justify-between p-2.5 rounded-xl border ${
+                          match.winnerId === match.player1Id && match.player1Id
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                            : 'bg-slate-950/40 border-white/5 text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {match.winnerId === match.player1Id && match.player1Id && (
+                            <CheckIcon size={14} className="text-emerald-400 shrink-0" />
+                          )}
+                          <span className="font-bold text-xs truncate">
+                            {p1?.name ?? (match.roundIndex === 0 ? 'Menunggu Top 2' : 'Pemenang SF')}
+                          </span>
+                        </div>
+                        <span className="font-mono font-black text-sm ml-2">
+                          {match.player1Score}
+                        </span>
+                      </div>
+
+                      {/* VS Divider */}
+                      <div className="text-center text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                        VS
+                      </div>
+
+                      {/* Player 2 */}
+                      <div
+                        className={`flex items-center justify-between p-2.5 rounded-xl border ${
+                          match.winnerId === match.player2Id && match.player2Id
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                            : 'bg-slate-950/40 border-white/5 text-white'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {match.winnerId === match.player2Id && match.player2Id && (
+                            <CheckIcon size={14} className="text-emerald-400 shrink-0" />
+                          )}
+                          <span className="font-bold text-xs truncate">
+                            {p2?.name ?? (match.roundIndex === 0 ? 'Menunggu Top 2' : 'Pemenang SF')}
+                          </span>
+                        </div>
+                        <span className="font-mono font-black text-sm ml-2">
+                          {match.player2Score}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Match Controls for Host */}
+                  <div className="mt-4 pt-3 border-t border-white/5">
+                    {isActive ? (
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] text-amber-300/80 text-center font-medium">
+                          Buzzer hanya untuk 2 pemain ini (First to 2 Poin)
+                        </p>
+                        <div className="flex gap-1.5 pt-1">
+                          {p1 && (
+                            <button
+                              type="button"
+                              onClick={() => onAdvanceWinner(match.id, p1.id)}
+                              disabled={isLoading}
+                              className="flex-1 py-1.5 px-2 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/10 text-[10px] font-bold transition-all truncate"
+                              title={`Menangkan ${p1.name} secara manual`}
+                            >
+                              Menangkan {p1.name}
+                            </button>
+                          )}
+                          {p2 && (
+                            <button
+                              type="button"
+                              onClick={() => onAdvanceWinner(match.id, p2.id)}
+                              disabled={isLoading}
+                              className="flex-1 py-1.5 px-2 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-300 border border-white/10 text-[10px] font-bold transition-all truncate"
+                              title={`Menangkan ${p2.name} secara manual`}
+                            >
+                              Menangkan {p2.name}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : isPlayable ? (
+                      <button
+                        type="button"
+                        onClick={() => onSetActiveMatch(match.id)}
+                        disabled={isLoading}
+                        className="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+                      >
+                        <PlayIcon size={12} />
+                        <span>Mulai Duel Ini</span>
+                      </button>
+                    ) : isFinished ? (
+                      <div className="text-center text-[11px] text-slate-500 font-medium">
+                        Pemenang: <span className="text-emerald-400 font-bold">{winner?.name}</span>
+                      </div>
+                    ) : (
+                      <div className="text-center text-[10px] text-slate-600 font-medium py-1">
+                        Menunggu hasil pertandingan sebelumnya
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
