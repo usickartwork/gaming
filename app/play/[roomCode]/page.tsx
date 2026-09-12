@@ -35,7 +35,8 @@ export default function PlayPage() {
       supabase.from('players').select('*').eq('game_id', s.gameId).order('score', { ascending: false }),
     ]).then(([{ data: game, error: gErr }, { data: players }]) => {
       if (gErr || !game) {
-        setError('Game not found')
+        console.error('PlayPage fetch error:', gErr)
+        setError(gErr?.message || 'Game not found')
       } else {
         setInitialGame(game as Game)
         setInitialPlayers((players ?? []) as Player[])
