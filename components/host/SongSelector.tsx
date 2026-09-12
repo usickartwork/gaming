@@ -8,17 +8,26 @@ import {
   CheckIcon,
   TrashIcon,
   PlusIcon,
+  EditIcon,
+  CrossIcon,
 } from '@/components/shared/Icons'
-import type { Song, RoundType } from '@/lib/types'
+import type { Song, RoundType, PlaylistSection } from '@/lib/types'
 
 interface SongSelectorProps {
   songs: Song[]
   currentSongId: string | null
   currentRound: RoundType
+  playlists?: PlaylistSection[]
+  activePlaylistId?: string | null
+  onSelectPlaylist?: (playlistId: string | null) => void
+  onCreatePlaylist?: (name: string) => void
+  onDeletePlaylist?: (playlistId: string) => void
+  onRenamePlaylist?: (playlistId: string, newName: string) => void
   onSelectSong: (song: Song) => void
   onChangeRound: (round: RoundType) => void
   onOpenSpotifySearch?: (query?: string) => void
   onDeleteSong?: (songId: string) => Promise<void>
+  onRemoveSongFromPlaylist?: (playlistId: string, songId: string) => void
 }
 
 const DIFFICULTY_COLORS = {
@@ -31,15 +40,41 @@ export function SongSelector({
   songs,
   currentSongId,
   currentRound,
+  playlists = [],
+  activePlaylistId = null,
+  onSelectPlaylist,
+  onCreatePlaylist,
+  onDeletePlaylist,
+  onRenamePlaylist,
   onSelectSong,
   onChangeRound,
   onOpenSpotifySearch,
   onDeleteSong,
+  onRemoveSongFromPlaylist,
 }: SongSelectorProps) {
   const [search, setSearch] = useState('')
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const filtered = songs.filter(
+  // Creating playlist inline UI
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false)
+  const [newPlaylistName, setNewPlaylistName] = useState('')
+
+  // Renaming playlist inline UI
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+
+  // Active playlist section object
+  const activePlaylist = playlists.find((p) => p.id === activePlaylistId) ?? null
+
+  // Songs filtered by playlist section:
+  // If activePlaylistId is set, only show songs in activePlaylist.songIds
+  // If activePlaylistId is null, show all songs
+  const sectionSongs = activePlaylist
+    ? songs.filter((s) => activePlaylist.songIds.includes(s.id))
+    : songs
+
+  // Filtered further by search query
+  const filtered = sectionSongs.filter(
     (s) =>
       s.round_type === currentRound &&
       (s.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -52,17 +87,36 @@ export function SongSelector({
     }
   }
 
-  const handleDelete = async (e: React.MouseEvent, songId: string) => {
+  const handleDeleteSong = async (e: React.MouseEvent, songId: string) => {
     e.stopPropagation()
-    if (!onDeleteSong) return
-    setDeletingId(songId)
-    try {
-      await onDeleteSong(songId)
-    } catch (err) {
-      console.error('Failed to delete song from playlist:', err)
-    } finally {
-      setDeletingId(null)
+    if (activePlaylist && onRemoveSongFromPlaylist) {
+      onRemoveSongFromPlaylist(activePlaylist.id, songId)
+      return
     }
+    if (onDeleteSong) {
+      setDeletingId(songId)
+      try {
+        await onDeleteSong(songId)
+      } finally {
+        setDeletingId(null)
+      }
+    }
+  }
+
+  const handleSaveNewPlaylist = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newPlaylistName.trim() || !onCreatePlaylist) return
+    onCreatePlaylist(newPlaylistName.trim())
+    setNewPlaylistName('')
+    setIsCreatingPlaylist(false)
+  }
+
+  const handleSaveRename = (e: React.FormEvent, playlistId: string) => {
+    e.preventDefault()
+    if (!editingName.trim() || !onRenamePlaylist) return
+    onRenamePlaylist(playlistId, editingName.trim())
+    setEditingPlaylistId(null)
+    setEditingName('')
   }
 
   return (
@@ -72,10 +126,10 @@ export function SongSelector({
         <div>
           <h3 className="text-white font-black text-base flex items-center gap-2">
             <ListIcon size={19} className="text-emerald-400" />
-            <span>Playlist Lagu Game</span>
+            <span>Playlist &amp; Kategori Lagu</span>
           </h3>
           <p className="text-slate-400 text-xs mt-0.5">
-            Kelola daftar lagu yang akan ditebak oleh pemain
+            Buat beberapa section / playlist untuk babak permainan
           </p>
         </div>
 
@@ -92,11 +146,175 @@ export function SongSelector({
               <span>+ Tambah dari Spotify</span>
             </button>
           )}
-          <span className="text-slate-400 text-xs font-bold bg-white/5 px-2.5 py-1.5 rounded-lg border border-white/5">
-            {filtered.length} Lagu
-          </span>
         </div>
       </div>
+
+      {/* Playlist Section Tabs (Pill Bar) */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none text-xs">
+          {/* All songs tab */}
+          <button
+            type="button"
+            onClick={() => onSelectPlaylist?.(null)}
+            className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+              activePlaylistId === null
+                ? 'bg-white/20 text-white font-extrabold border border-white/20 shadow-sm'
+                : 'bg-slate-900/80 text-slate-400 hover:text-white border border-white/5'
+            }`}
+          >
+            <span>Semua Lagu</span>
+            <span className="text-[10px] opacity-70 bg-white/10 px-1.5 py-0.2 rounded-full">
+              {songs.length}
+            </span>
+          </button>
+
+          {/* User Custom Playlist Section Tabs */}
+          {playlists.map((pl) => {
+            const isPlActive = activePlaylistId === pl.id
+            const count = pl.songIds.length
+            return (
+              <button
+                key={pl.id}
+                type="button"
+                onClick={() => onSelectPlaylist?.(pl.id)}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-1.5 ${
+                  isPlActive
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
+                    : 'bg-slate-900/80 text-slate-400 hover:text-emerald-300 border border-white/5'
+                }`}
+              >
+                <span>🎵 {pl.name}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    isPlActive ? 'bg-slate-950/20 text-slate-950' : 'bg-white/10 text-slate-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+
+          {/* Button: + Buat Playlist Baru */}
+          {!isCreatingPlaylist && (
+            <button
+              type="button"
+              onClick={() => setIsCreatingPlaylist(true)}
+              className="px-3 py-1.5 rounded-xl font-bold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 transition-all shrink-0 flex items-center gap-1 active:scale-95"
+            >
+              <PlusIcon size={14} />
+              <span>+ Section Playlist</span>
+            </button>
+          )}
+        </div>
+
+        {/* Inline form to create new playlist */}
+        {isCreatingPlaylist && (
+          <form
+            onSubmit={handleSaveNewPlaylist}
+            className="flex items-center gap-2 p-2.5 rounded-2xl bg-slate-900 border border-emerald-500/40 animate-in fade-in"
+          >
+            <span className="text-emerald-400 font-bold text-xs pl-1">Nama Playlist:</span>
+            <input
+              type="text"
+              value={newPlaylistName}
+              onChange={(e) => setNewPlaylistName(e.target.value)}
+              placeholder="Contoh: Babak 1 (Pop Indo), Final, Rock 90s..."
+              autoFocus
+              className="flex-1 bg-slate-800 text-white placeholder-slate-500 px-3 py-1.5 rounded-xl text-xs outline-none border border-white/10 focus:border-emerald-400"
+            />
+            <button
+              type="submit"
+              className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all active:scale-95 shadow-sm"
+            >
+              Simpan
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsCreatingPlaylist(false)
+                setNewPlaylistName('')
+              }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+            >
+              <CrossIcon size={14} />
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* Active Section Header Bar (if a specific playlist is selected) */}
+      {activePlaylist && (
+        <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded-md font-black">
+              SECTION
+            </span>
+            {editingPlaylistId === activePlaylist.id ? (
+              <form
+                onSubmit={(e) => handleSaveRename(e, activePlaylist.id)}
+                className="flex items-center gap-1.5"
+              >
+                <input
+                  type="text"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  autoFocus
+                  className="bg-slate-900 text-white px-2 py-1 rounded-lg text-xs border border-emerald-400 outline-none"
+                />
+                <button
+                  type="submit"
+                  className="px-2 py-1 bg-emerald-400 text-slate-950 font-bold rounded-lg text-[10px]"
+                >
+                  OK
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingPlaylistId(null)}
+                  className="p-1 text-slate-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="text-white font-extrabold text-sm">{activePlaylist.name}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPlaylistId(activePlaylist.id)
+                    setEditingName(activePlaylist.name)
+                  }}
+                  title="Ganti nama playlist"
+                  className="text-slate-400 hover:text-emerald-300 p-0.5"
+                >
+                  <EditIcon size={13} />
+                </button>
+              </div>
+            )}
+            <span className="text-slate-400 text-[11px]">
+              • {activePlaylist.songIds.length} Lagu
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {onDeletePlaylist && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Hapus section playlist "${activePlaylist.name}"?`)) {
+                    onDeletePlaylist(activePlaylist.id)
+                  }
+                }}
+                className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 px-2 py-1 rounded-lg transition-colors flex items-center gap-1 text-[11px]"
+              >
+                <TrashIcon size={12} />
+                <span>Hapus Section</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search Input in Playlist */}
       <div className="relative">
@@ -105,7 +323,11 @@ export function SongSelector({
         </span>
         <input
           type="text"
-          placeholder="Filter playlist atau cari di Spotify (tekan Enter)..."
+          placeholder={
+            activePlaylist
+              ? `Cari lagu di "${activePlaylist.name}" atau tekan Enter untuk cari Spotify...`
+              : 'Filter lagu atau tekan Enter untuk cari di Spotify...'
+          }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -178,18 +400,16 @@ export function SongSelector({
                   </span>
                 )}
 
-                {/* Remove from playlist button */}
-                {onDeleteSong && (
-                  <button
-                    type="button"
-                    onClick={(e) => handleDelete(e, song.id)}
-                    disabled={isDeleting}
-                    title="Hapus dari playlist"
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                  >
-                    <TrashIcon size={14} />
-                  </button>
-                )}
+                {/* Remove from section or delete button */}
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteSong(e, song.id)}
+                  disabled={isDeleting}
+                  title={activePlaylist ? 'Keluarkan dari playlist ini' : 'Hapus lagu'}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                >
+                  <TrashIcon size={14} />
+                </button>
               </div>
             </div>
           )
@@ -200,8 +420,10 @@ export function SongSelector({
           <div className="text-center py-8 px-4 space-y-3 bg-slate-900/50 rounded-2xl border border-white/5">
             <p className="text-slate-400 text-xs">
               {search.trim()
-                ? `Lagu "${search}" belum ada di playlist game.`
-                : 'Belum ada lagu di playlist game.'}
+                ? `Lagu "${search}" tidak ditemukan ${activePlaylist ? `di playlist ${activePlaylist.name}` : ''}.`
+                : activePlaylist
+                ? `Section playlist "${activePlaylist.name}" masih kosong.`
+                : 'Belum ada lagu di daftar putar.'}
             </p>
             {onOpenSpotifySearch && (
               <button
@@ -212,7 +434,10 @@ export function SongSelector({
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                   <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.498 17.307c-.218.358-.68.472-1.038.254-2.846-1.74-6.428-2.133-10.648-1.168-.41.094-.82-.162-.914-.572-.093-.41.163-.82.573-.914 4.624-1.057 8.583-.615 11.773 1.362.358.218.472.68.254 1.038zm1.467-3.262c-.274.446-.86.588-1.306.314-3.258-2.003-8.224-2.585-12.077-1.415-.498.151-1.028-.135-1.18-.633-.15-.498.136-1.028.634-1.18 4.407-1.338 9.883-.69 13.615 1.608.446.274.588.86.314 1.306zm.126-3.41c-3.908-2.32-10.354-2.533-14.093-1.398-.6.182-1.238-.162-1.42-.762-.182-.6.162-1.238.762-1.42 4.303-1.306 11.417-1.055 15.918 1.617.538.319.713 1.018.394 1.556-.319.538-1.018.713-1.556.394z" />
                 </svg>
-                <span>Cari &amp; Tambah Lagu di Spotify</span>
+                <span>
+                  Cari &amp; Tambah Lagu Spotify{' '}
+                  {activePlaylist ? `ke ${activePlaylist.name}` : ''}
+                </span>
               </button>
             )}
           </div>

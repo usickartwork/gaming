@@ -21,6 +21,7 @@ interface SpotifySearchModalProps {
   onAddToPlaylist?: (track: SpotifyTrack) => Promise<void>
   existingSongUris?: string[]
   initialQuery?: string
+  targetPlaylistName?: string
   isLoading?: boolean
 }
 
@@ -31,6 +32,7 @@ export function SpotifySearchModal({
   onAddToPlaylist,
   existingSongUris = [],
   initialQuery = '',
+  targetPlaylistName,
   isLoading = false,
 }: SpotifySearchModalProps) {
   const [query, setQuery] = useState('')
@@ -162,7 +164,16 @@ export function SpotifySearchModal({
             </div>
             <div>
               <h3 className="text-white font-black text-lg tracking-tight">Cari &amp; Buat Playlist Spotify</h3>
-              <p className="text-slate-400 text-xs">Pilih dan tambahkan beberapa lagu sekaligus ke playlist sesi game</p>
+              {targetPlaylistName ? (
+                <p className="text-emerald-400 font-bold text-xs mt-0.5 flex items-center gap-1.5">
+                  <span>Menambahkan ke:</span>
+                  <span className="bg-emerald-500/20 px-2 py-0.5 rounded-md text-emerald-300 border border-emerald-500/30">
+                    {targetPlaylistName}
+                  </span>
+                </p>
+              ) : (
+                <p className="text-slate-400 text-xs">Pilih dan tambahkan beberapa lagu sekaligus ke playlist sesi game</p>
+              )}
             </div>
           </div>
 

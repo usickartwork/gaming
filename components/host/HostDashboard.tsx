@@ -30,7 +30,7 @@ import {
   getGameMode,
   getTournamentState,
 } from '@/lib/tournament-utils'
-import type { Game, Player, Song, RoundType, HostSession, GameMode, TournamentPhase } from '@/lib/types'
+import type { Game, Player, Song, RoundType, HostSession, GameMode, TournamentPhase, PlaylistSection } from '@/lib/types'
 
 interface HostDashboardProps {
   initialGame: Game
@@ -68,10 +68,86 @@ export function HostDashboard({
   const [songList, setSongList] = useState<Song[]>(songs)
   const [spotifyConnectedBanner, setSpotifyConnectedBanner] = useState(false)
 
+  // ── Host API helper ──────────────────────────────────────────────
+  const hostAction = useCallback(
+    async (action: string, payload?: object) => {
+      setIsLoading(true)
+      try {
+        await fetch(`/api/admin/${game.room_code}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-host-password': hostSession.hostPassword,
+          },
+          body: JSON.stringify({ action, payload }),
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [game.room_code, hostSession.hostPassword]
+  )
+
+  // Playlist Sections State
+  const [playlists, setPlaylists] = useState<PlaylistSection[]>(tournamentState?.playlists || [])
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null)
+
+  // Sync playlists from tournamentState
+  useEffect(() => {
+    if (tournamentState?.playlists) {
+      setPlaylists(tournamentState.playlists)
+    }
+  }, [tournamentState?.playlists])
+
   const handleOpenSpotifySearch = (query?: string) => {
     setSpotifyInitialQuery(query || '')
     setIsSpotifyModalOpen(true)
   }
+
+  const handleCreatePlaylist = useCallback(
+    async (name: string) => {
+      const newPl: PlaylistSection = {
+        id: 'pl_' + Date.now(),
+        name,
+        songIds: [],
+      }
+      const updated = [...playlists, newPl]
+      setPlaylists(updated)
+      setActivePlaylistId(newPl.id)
+      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+    },
+    [playlists, hostAction]
+  )
+
+  const handleDeletePlaylist = useCallback(
+    async (playlistId: string) => {
+      const updated = playlists.filter((p) => p.id !== playlistId)
+      setPlaylists(updated)
+      if (activePlaylistId === playlistId) setActivePlaylistId(null)
+      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+    },
+    [playlists, activePlaylistId, hostAction]
+  )
+
+  const handleRenamePlaylist = useCallback(
+    async (playlistId: string, newName: string) => {
+      const updated = playlists.map((p) => (p.id === playlistId ? { ...p, name: newName } : p))
+      setPlaylists(updated)
+      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+    },
+    [playlists, hostAction]
+  )
+
+  const handleRemoveSongFromPlaylist = useCallback(
+    async (playlistId: string, songId: string) => {
+      const updated = playlists.map((p) =>
+        p.id === playlistId ? { ...p, songIds: p.songIds.filter((id) => id !== songId) } : p
+      )
+      setPlaylists(updated)
+      await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+    },
+    [playlists, hostAction]
+  )
 
   // Keep songList updated with prop
   useEffect(() => {
@@ -129,6 +205,17 @@ export function HostDashboard({
           if (prev.some((s) => s.id === data.songId)) return prev
           return [...prev, newSong]
         })
+
+        // If currently in a playlist section, attach song to it
+        if (activePlaylistId) {
+          const updated = playlists.map((p) =>
+            p.id === activePlaylistId
+              ? { ...p, songIds: [...new Set([...p.songIds, data.songId])] }
+              : p
+          )
+          setPlaylists(updated)
+          await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+        }
       }
     } catch (err) {
       console.error('Error selecting Spotify song:', err)
@@ -172,6 +259,17 @@ export function HostDashboard({
           if (prev.some((s) => s.id === data.songId)) return prev
           return [...prev, newSong]
         })
+
+        // If currently in a playlist section, attach song to it
+        if (activePlaylistId) {
+          const updated = playlists.map((p) =>
+            p.id === activePlaylistId
+              ? { ...p, songIds: [...new Set([...p.songIds, data.songId])] }
+              : p
+          )
+          setPlaylists(updated)
+          await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
+        }
       }
     } catch (err) {
       console.error('Error adding song to playlist:', err)
@@ -190,6 +288,13 @@ export function HostDashboard({
       })
       if (res.ok) {
         setSongList((prev) => prev.filter((s) => s.id !== songId))
+        // Also remove from any playlist sections
+        const updated = playlists.map((p) => ({
+          ...p,
+          songIds: p.songIds.filter((id) => id !== songId),
+        }))
+        setPlaylists(updated)
+        await hostAction('UPDATE_PLAYLISTS', { playlists: updated })
       }
     } catch (err) {
       console.error('Failed to delete song:', err)
@@ -204,26 +309,6 @@ export function HostDashboard({
     }
     lastWinnerRef.current = game.buzz_winner_id
   }, [game.buzz_winner_id])
-
-  // ── Host API helper ──────────────────────────────────────────────
-  const hostAction = useCallback(
-    async (action: string, payload?: object) => {
-      setIsLoading(true)
-      try {
-        await fetch(`/api/admin/${game.room_code}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-host-password': hostSession.hostPassword,
-          },
-          body: JSON.stringify({ action, payload }),
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    },
-    [game.room_code, hostSession.hostPassword]
-  )
 
   const handleUpdateScore = useCallback(
     async (playerId: string, score: number) => {
@@ -673,10 +758,17 @@ export function HostDashboard({
             songs={songList}
             currentSongId={game.current_song_id}
             currentRound={game.current_round}
+            playlists={playlists}
+            activePlaylistId={activePlaylistId}
+            onSelectPlaylist={setActivePlaylistId}
+            onCreatePlaylist={handleCreatePlaylist}
+            onDeletePlaylist={handleDeletePlaylist}
+            onRenamePlaylist={handleRenamePlaylist}
             onSelectSong={(song) => hostAction('SET_CURRENT_SONG', { songId: song.id })}
             onChangeRound={(round) => hostAction('SET_ROUND', { round })}
             onOpenSpotifySearch={handleOpenSpotifySearch}
             onDeleteSong={handleDeleteSong}
+            onRemoveSongFromPlaylist={handleRemoveSongFromPlaylist}
           />
         </div>
 
@@ -755,6 +847,7 @@ export function HostDashboard({
         onAddToPlaylist={handleAddToPlaylist}
         existingSongUris={songList.map((s) => s.audio_url)}
         initialQuery={spotifyInitialQuery}
+        targetPlaylistName={playlists.find((p) => p.id === activePlaylistId)?.name}
         isLoading={isLoading}
       />
     </div>

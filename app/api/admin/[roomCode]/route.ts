@@ -223,6 +223,13 @@ export async function PATCH(
         break
       }
 
+      case 'UPDATE_PLAYLISTS': {
+        const ts = getTournamentState(game) || ({} as any)
+        const updatedTS = { ...ts, playlists: payload.playlists } as TournamentState
+        await saveGameTournament(supabase, game.id, game.name, updatedTS, ts?.mode || 'CLASSIC')
+        break
+      }
+
       case 'RESET_ALL_EXCLUSIONS': {
         await supabase
           .from('players')

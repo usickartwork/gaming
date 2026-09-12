@@ -35,6 +35,12 @@ export interface TournamentMatch {
   status: TournamentMatchStatus
 }
 
+export interface PlaylistSection {
+  id: string
+  name: string
+  songIds: string[]
+}
+
 export interface TournamentState {
   mode: GameMode
   phase: TournamentPhase
@@ -50,6 +56,7 @@ export interface TournamentState {
   readyPlayerIds?: string[]
   countdownEndTime?: number | null
   qualifyCount?: 2 | 3
+  playlists?: PlaylistSection[]
 }
 
 export interface Game {
