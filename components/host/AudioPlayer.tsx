@@ -1,32 +1,90 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
-import { MusicIcon, DiscIcon, PlayIcon, PauseIcon, StopIcon } from '@/components/shared/Icons'
+import { useRef, useState, useEffect, useCallback } from 'react'
+import { MusicIcon, DiscIcon, PlayIcon, PauseIcon, StopIcon, ShuffleIcon } from '@/components/shared/Icons'
+import type { BuzzState } from '@/lib/types'
 
 interface AudioPlayerProps {
   audioUrl: string | null
   songTitle: string | null
   songArtist: string | null
+  buzzState?: BuzzState
+  songId?: string | null
 }
 
-export function AudioPlayer({ audioUrl, songTitle, songArtist }: AudioPlayerProps) {
+export function AudioPlayer({ audioUrl, songTitle, songArtist, buzzState, songId }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [currentTime, setCurrentTime] = useState(0)
+  const [randomStart, setRandomStart] = useState(0)
+  const [isFullPlay, setIsFullPlay] = useState(false)
+
+  const calcRandomStart = useCallback((dur: number) => {
+    if (!dur || dur <= 10) return 0
+    const min = Math.min(15, dur * 0.15)
+    const max = Math.max(min + 5, dur * 0.65)
+    return Math.floor(min + Math.random() * (max - min))
+  }, [])
+
+  // Re-roll random start position
+  const handleReRoll = useCallback(() => {
+    if (!duration) return
+    const nextStart = calcRandomStart(duration)
+    setRandomStart(nextStart)
+    if (audioRef.current && !playing) {
+      audioRef.current.currentTime = nextStart
+      setCurrentTime(nextStart)
+    }
+  }, [duration, calcRandomStart, playing])
 
   // Reset when song changes
   useEffect(() => {
     setPlaying(false)
     setCurrentTime(0)
+    setIsFullPlay(false)
+    setRandomStart(0)
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
     }
-  }, [audioUrl])
+  }, [audioUrl, songId])
+
+  // Auto-pause when player buzzes in
+  useEffect(() => {
+    if (buzzState === 'LOCKED' || buzzState === 'ANSWERING') {
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+      setPlaying(false)
+    }
+  }, [buzzState])
+
+  // Auto-play FULL song from 0:00 when answer is CORRECT (buzzState === RESULT)
+  useEffect(() => {
+    if (buzzState === 'RESULT') {
+      setIsFullPlay(true)
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0
+        setCurrentTime(0)
+        const playPromise = audioRef.current.play()
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => setPlaying(true))
+            .catch((err) => console.log('Autoplay blocked by browser:', err))
+        }
+      }
+    }
+  }, [buzzState])
 
   const handlePlay = () => {
-    audioRef.current?.play()
+    if (!audioRef.current) return
+    // If starting for the first time in guess mode, jump to random start
+    if (!isFullPlay && currentTime === 0 && randomStart > 0) {
+      audioRef.current.currentTime = randomStart
+      setCurrentTime(randomStart)
+    }
+    audioRef.current.play()
     setPlaying(true)
   }
 
@@ -38,10 +96,24 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist }: AudioPlayerProp
   const handleStop = () => {
     if (audioRef.current) {
       audioRef.current.pause()
-      audioRef.current.currentTime = 0
+      const resetTime = isFullPlay ? 0 : randomStart
+      audioRef.current.currentTime = resetTime
+      setCurrentTime(resetTime)
     }
     setPlaying(false)
-    setCurrentTime(0)
+  }
+
+  const handleMetadata = (e: React.SyntheticEvent<HTMLAudioElement>) => {
+    const dur = e.currentTarget.duration
+    setDuration(dur)
+    if (!isFullPlay) {
+      const start = calcRandomStart(dur)
+      setRandomStart(start)
+      if (audioRef.current && currentTime === 0) {
+        audioRef.current.currentTime = start
+        setCurrentTime(start)
+      }
+    }
   }
 
   const formatTime = (s: number) => {
@@ -82,11 +154,43 @@ export function AudioPlayer({ audioUrl, songTitle, songArtist }: AudioPlayerProp
         <audio
           ref={audioRef}
           src={audioUrl}
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          onLoadedMetadata={handleMetadata}
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
           onEnded={() => { setPlaying(false); setCurrentTime(0) }}
           preload="metadata"
         />
+      )}
+
+      {/* Mode Banner: Full Song on Correct or Random Start indicator */}
+      {isFullPlay && buzzState === 'RESULT' ? (
+        <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold relative z-10 shadow-lg shadow-emerald-500/10">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Jawaban Benar! Memutar Lagu Penuh Otomatis</span>
+          </div>
+          <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 bg-emerald-400/20 px-2.5 py-0.5 rounded-full border border-emerald-400/30">
+            FULL TRACK
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-slate-900/90 border border-white/5 text-slate-300 text-xs font-semibold relative z-10">
+          <div className="flex items-center gap-2">
+            <ShuffleIcon size={14} className="text-amber-400" />
+            <span>
+              Titik Mulai Acak: <span className="font-mono font-bold text-amber-400">{formatTime(randomStart)}</span>
+            </span>
+          </div>
+          <button
+            onClick={handleReRoll}
+            type="button"
+            disabled={playing}
+            title="Acak titik mulai lagu lain"
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-400 hover:text-emerald-300 disabled:opacity-40 transition-all py-1 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95"
+          >
+            <ShuffleIcon size={12} />
+            <span>Acak Ulang Posisi</span>
+          </button>
+        </div>
       )}
 
       {/* Track info with animated vinyl/soundwave */}

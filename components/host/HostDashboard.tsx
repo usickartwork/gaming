@@ -153,6 +153,8 @@ export function HostDashboard({
             audioUrl={currentSong?.audio_url ?? null}
             songTitle={currentSong?.title ?? null}
             songArtist={currentSong?.artist ?? null}
+            buzzState={game.buzz_state}
+            songId={game.current_song_id}
           />
 
           {/* Next Song Action Banner */}

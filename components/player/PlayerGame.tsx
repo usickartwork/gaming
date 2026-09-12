@@ -8,7 +8,7 @@ import { playDingSound } from '@/lib/audio'
 import { BuzzButton } from './BuzzButton'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
-import { MicIcon, LockIcon, TrophyIcon, MusicIcon } from '@/components/shared/Icons'
+import { MicIcon, LockIcon, TrophyIcon, MusicIcon, DiscIcon } from '@/components/shared/Icons'
 import type { Game, Player, PlayerSession } from '@/lib/types'
 
 interface PlayerGameProps {
@@ -24,6 +24,26 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const [isBuzzing, setIsBuzzing] = useState(false)
   const [localWinner, setLocalWinner] = useState<boolean | null>(null)
   const [localWinnerName, setLocalWinnerName] = useState<string | null>(null)
+  const [revealedSong, setRevealedSong] = useState<{ title: string; artist: string } | null>(null)
+  const [loadingSong, setLoadingSong] = useState(false)
+
+  // Fetch revealed song details when game enters RESULT state
+  useEffect(() => {
+    if (game.buzz_state === 'RESULT' && game.room_code) {
+      setLoadingSong(true)
+      fetch(`/api/games/${game.room_code}/song`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.revealed && data.song) {
+            setRevealedSong(data.song)
+          }
+        })
+        .catch((err) => console.error('Error fetching song reveal:', err))
+        .finally(() => setLoadingSong(false))
+    } else if (game.buzz_state !== 'RESULT') {
+      setRevealedSong(null)
+    }
+  }, [game.buzz_state, game.room_code, game.current_song_id])
 
   // Reset local state when host enables buzz again
   useEffect(() => {
@@ -154,10 +174,37 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   if (game.buzz_state === 'RESULT') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 relative overflow-hidden">
-        <div className="w-full max-w-sm space-y-5 relative z-10">
-          <div className="text-center">
-            <TrophyIcon size={40} className="text-amber-400 mx-auto mb-1" />
-            <h2 className="text-white text-2xl font-black tracking-tight mt-1">KLASEMEN SKOR</h2>
+        <div className="w-full max-w-sm space-y-4 relative z-10 py-4">
+          {/* Revealed Song Title & Artist Card */}
+          <div className="glass-panel rounded-3xl p-5 border border-emerald-500/40 bg-gradient-to-b from-emerald-950/60 via-slate-900 to-slate-950 shadow-2xl relative overflow-hidden text-center space-y-3">
+            {/* Ambient emerald blur */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-black text-[11px] uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              <span>JAWABAN BENAR!</span>
+            </div>
+
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-400/30 flex items-center justify-center text-emerald-400 mx-auto shadow-lg shadow-emerald-500/20">
+              <DiscIcon size={28} className="animate-spin" style={{ animationDuration: '4s' }} />
+            </div>
+
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Judul Lagu</p>
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-0.5 leading-tight">
+                {revealedSong?.title || (loadingSong ? 'Memuat Judul...' : 'Lagu Tertebak')}
+              </h1>
+              {revealedSong?.artist && (
+                <p className="text-emerald-400 font-extrabold text-sm sm:text-base mt-1">
+                  {revealedSong.artist}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="text-center pt-2">
+            <TrophyIcon size={28} className="text-amber-400 mx-auto mb-1" />
+            <h2 className="text-white text-lg font-black tracking-tight">KLASEMEN SKOR SEMENTARA</h2>
             <p className="text-slate-400 text-xs">Ronde {game.current_round === 'GUESS' ? '1' : '2'}</p>
           </div>
 
@@ -165,7 +212,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             <Leaderboard players={players} highlightId={session.playerId} />
           </div>
 
-          <div className="text-center py-2">
+          <div className="text-center py-1">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 border border-white/10 text-slate-400 text-xs animate-pulse">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
               Menunggu Host Memutar Lagu Selanjutnya...
