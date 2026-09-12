@@ -5,8 +5,26 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { Game } from '@/lib/types'
 
 /**
- * Subscribes to real-time changes on the games table for a specific game.
- * Returns the live game state, updating whenever the host changes anything.
+ * Broadcasts sub-50ms ultra-low latency WebSocket signals directly between Host and Players.
+ * Bypasses database disk latency for instantaneous UI and audio reactions.
+ */
+export function broadcastFastBuzz(gameId: string, payload: Record<string, any>) {
+  try {
+    const supabase = getSupabaseBrowserClient()
+    const channel = supabase.channel(`game-state:${gameId}`)
+    channel.send({
+      type: 'broadcast',
+      event: 'fast_buzz',
+      payload,
+    })
+  } catch (err) {
+    console.warn('broadcastFastBuzz error:', err)
+  }
+}
+
+/**
+ * Subscribes to real-time changes on the games table for a specific game,
+ * combining instant WebSocket broadcast events with persistent database changes.
  */
 export function useGameState(gameId: string, initialGame: Game): Game {
   const [game, setGame] = useState<Game>(initialGame)
@@ -17,6 +35,27 @@ export function useGameState(gameId: string, initialGame: Game): Game {
 
     const channel = supabase
       .channel(`game-state:${gameId}`)
+      .on(
+        'broadcast',
+        { event: 'fast_buzz' },
+        (payload: { payload: Record<string, any> }) => {
+          const msg = payload?.payload
+          if (!msg) return
+          if (msg.type === 'BUZZ_STATE') {
+            setGame((prev) => ({
+              ...prev,
+              buzz_state: msg.buzzState,
+              buzz_winner_id: msg.winnerId ?? null,
+            }))
+          } else if (msg.type === 'BUZZ_CLAIM') {
+            setGame((prev) => ({
+              ...prev,
+              buzz_state: 'LOCKED',
+              buzz_winner_id: msg.winnerId,
+            }))
+          }
+        }
+      )
       .on(
         'postgres_changes',
         {

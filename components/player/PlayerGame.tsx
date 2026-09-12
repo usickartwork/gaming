@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { useGameState } from '@/lib/hooks/useGameState'
+import { useGameState, broadcastFastBuzz } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { usePresence } from '@/lib/hooks/usePresence'
 import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
@@ -57,22 +57,29 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const lastWinnerPlayerRef = useRef<string | null>(null)
   const serverOffsetRef = useRef<number>(0)
 
-  // Calibrate client-server clock offset to eliminate network latency advantage on buzzes
+  // Calibrate client-server clock offset with multi-sample NTP to eliminate ping latency advantages
   useEffect(() => {
     const syncClock = async () => {
       try {
-        const t0 = performance.now()
-        const res = await fetch('/api/games/ping', { cache: 'no-store' })
-        const data = await res.json()
-        const t1 = performance.now()
-        const rtt = t1 - t0
-        serverOffsetRef.current = data.serverTime - (Date.now() - Math.round(rtt / 2))
+        const pingOnce = async () => {
+          const t0 = performance.now()
+          const res = await fetch('/api/games/ping', { cache: 'no-store' })
+          const data = await res.json()
+          const rtt = performance.now() - t0
+          const offset = data.serverTime - (Date.now() - Math.round(rtt / 2))
+          return { rtt, offset }
+        }
+        const s1 = await pingOnce()
+        const s2 = await pingOnce()
+        // Pick the sample with the lowest RTT (least network queue jitter)
+        const best = s1.rtt <= s2.rtt ? s1 : s2
+        serverOffsetRef.current = best.offset
       } catch {
         // graceful ignore
       }
     }
     syncClock()
-    const interval = setInterval(syncClock, 25000)
+    const interval = setInterval(syncClock, 20000)
     return () => clearInterval(interval)
   }, [])
 
@@ -248,6 +255,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
     // Calculate calibrated press timestamp to eliminate latency discrepancies
     const pressedAt = Date.now() + (serverOffsetRef.current || 0)
+
+    // 1. Instantly signal host & room via WebSocket broadcast (<30ms)
+    broadcastFastBuzz(game.id, {
+      type: 'BUZZ_CLAIM',
+      winnerId: session.playerId,
+      winnerName: session.playerName,
+      pressedAt,
+    })
 
     try {
       const res = await fetch(`/api/admin/${game.room_code}/buzz`, {

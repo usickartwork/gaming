@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useGameState } from '@/lib/hooks/useGameState'
+import { useGameState, broadcastFastBuzz } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
 import {
@@ -725,9 +725,18 @@ export function HostDashboard({
             buzzState={game.buzz_state}
             buzzWinner={buzzWinner}
             currentAttempt={game.current_attempt}
-            onEnableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
-            onDisableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'DISABLED' })}
-            onResetBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
+            onEnableBuzz={() => {
+              broadcastFastBuzz(game.id, { type: 'BUZZ_STATE', buzzState: 'READY', winnerId: null })
+              hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })
+            }}
+            onDisableBuzz={() => {
+              broadcastFastBuzz(game.id, { type: 'BUZZ_STATE', buzzState: 'DISABLED', winnerId: null })
+              hostAction('SET_BUZZ_STATE', { buzzState: 'DISABLED' })
+            }}
+            onResetBuzz={() => {
+              broadcastFastBuzz(game.id, { type: 'BUZZ_STATE', buzzState: 'READY', winnerId: null })
+              hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })
+            }}
             onCorrect={() => answerAction('CORRECT')}
             onWrong={() => answerAction('WRONG')}
             isLoading={isLoading}
