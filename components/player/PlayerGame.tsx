@@ -9,7 +9,15 @@ import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/au
 import { BuzzButton } from './BuzzButton'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
-import { MicIcon, LockIcon, TrophyIcon, MusicIcon, DiscIcon } from '@/components/shared/Icons'
+import {
+  MicIcon,
+  LockIcon,
+  TrophyIcon,
+  MusicIcon,
+  DiscIcon,
+  CheckIcon,
+  CrossIcon,
+} from '@/components/shared/Icons'
 import type { Game, Player, PlayerSession } from '@/lib/types'
 
 interface PlayerGameProps {
@@ -32,6 +40,15 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   const prevBuzzStateRef = useRef(game.buzz_state)
   const prevAttemptRef = useRef(game.current_attempt)
+  const lastWinnerPlayerRef = useRef<string | null>(null)
+
+  // Track who was the active buzzing player before evaluate
+  useEffect(() => {
+    if (game.buzz_winner_id) {
+      const winner = players.find((p) => p.id === game.buzz_winner_id)
+      if (winner) lastWinnerPlayerRef.current = winner.name
+    }
+  }, [game.buzz_winner_id, players])
 
   // Real-time Sound & Visual Feedback for Correct vs Wrong answers
   useEffect(() => {
@@ -39,7 +56,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
       playCorrectFanfareSound()
       setFeedbackAnim('correct')
-      const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+      const t = setTimeout(() => setFeedbackAnim('none'), 2500)
       return () => clearTimeout(t)
     }
 
@@ -51,7 +68,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     ) {
       playWrongSound()
       setFeedbackAnim('wrong')
-      const t = setTimeout(() => setFeedbackAnim('none'), 1200)
+      const t = setTimeout(() => setFeedbackAnim('none'), 2200)
       return () => clearTimeout(t)
     }
 
@@ -122,6 +139,88 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }
 
+  // ── Dedicated High-Energy Feedback Overlay (Correct / Wrong) ───
+  const renderFeedbackOverlay = () => {
+    if (feedbackAnim === 'none') return null
+
+    const isMe = localWinner === true || game.buzz_winner_id === session.playerId
+    const winnerName = lastWinnerPlayerRef.current || buzzWinnerPlayer?.name || localWinnerName || 'Pemain Lain'
+
+    if (feedbackAnim === 'correct') {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none pointer-events-none">
+          <div className="flex flex-col items-center text-center space-y-4 max-w-xs animate-pop-in">
+            {/* Glowing Emerald Dome & Sparkles */}
+            <div className="relative">
+              <div className="absolute -inset-6 bg-emerald-500/30 rounded-full blur-2xl animate-pulse" />
+              <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-400 to-emerald-300 p-1 flex items-center justify-center shadow-[0_0_50px_rgba(16,185,129,0.7)] animate-bounce">
+                <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-emerald-400">
+                  <CheckIcon size={56} />
+                </div>
+              </div>
+              {/* Sparkle ping accents */}
+              <div className="absolute -top-2 -left-2 w-3.5 h-3.5 bg-amber-300 rounded-full animate-ping" />
+              <div className="absolute -bottom-1 -right-2 w-4 h-4 bg-emerald-400 rounded-full animate-ping" style={{ animationDelay: '200ms' }} />
+              <div className="absolute top-1/2 -left-5 w-3 h-3 bg-cyan-300 rounded-full animate-ping" style={{ animationDelay: '400ms' }} />
+              <div className="absolute top-1/2 -right-5 w-3 h-3 bg-teal-300 rounded-full animate-ping" style={{ animationDelay: '600ms' }} />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="inline-block px-3 py-1 rounded-full bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-400/40">
+                JAWABAN BENAR!
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
+                {isMe ? 'KAMU BENAR!' : 'TEBAKAN TEPAT!'}
+              </h2>
+              <p className="text-emerald-300 font-bold text-sm">
+                {isMe
+                  ? 'Hebat! Poin bertambah ke skormu!'
+                  : `${winnerName} berhasil menebak lagu ini!`}
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    if (feedbackAnim === 'wrong') {
+      const iWasWrong = isExcluded || (isMe && prevBuzzStateRef.current === 'LOCKED')
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none pointer-events-none">
+          <div className="flex flex-col items-center text-center space-y-4 max-w-xs animate-shake">
+            {/* Glowing Red Rose Dome */}
+            <div className="relative">
+              <div className="absolute -inset-6 bg-rose-600/40 rounded-full blur-2xl animate-pulse" />
+              <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-rose-600 via-red-500 to-rose-400 p-1 flex items-center justify-center shadow-[0_0_50px_rgba(244,63,94,0.8)]">
+                <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-rose-500">
+                  <CrossIcon size={56} />
+                </div>
+              </div>
+              <div className="absolute -top-1 -right-2 w-4 h-4 bg-rose-400 rounded-full animate-ping" />
+              <div className="absolute -bottom-2 -left-2 w-3.5 h-3.5 bg-red-400 rounded-full animate-ping" style={{ animationDelay: '300ms' }} />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="inline-block px-3 py-1 rounded-full bg-rose-500 text-slate-950 font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-500/40">
+                JAWABAN SALAH!
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
+                {iWasWrong ? 'KAMU SALAH!' : 'KURANG TEPAT!'}
+              </h2>
+              <p className="text-rose-300 font-bold text-sm">
+                {iWasWrong
+                  ? 'Poin dikurangi & kesempatanmu hangus untuk lagu ini.'
+                  : `${winnerName} salah jawab! Buzzer dibuka kembali, siap-siap!`}
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return null
+  }
+
   // ── Waiting Room ─────────────────────────────────────────────────
   if (game.status === 'LOBBY') {
     return (
@@ -182,6 +281,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && isWinner) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-emerald-950/80 via-slate-950 to-black">
+        {renderFeedbackOverlay()}
         <div className="absolute inset-0 bg-emerald-500/10 blur-[120px] pointer-events-none" />
 
         <div className="relative z-10 space-y-4 max-w-sm w-full">
@@ -217,6 +317,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   if ((localWinner === false || game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
+        {renderFeedbackOverlay()}
         <div className="relative z-10 space-y-4 max-w-sm w-full">
           <div className="w-20 h-20 rounded-3xl bg-slate-900 border border-white/10 flex items-center justify-center mx-auto shadow-2xl">
             <LockIcon size={36} className="text-slate-400" />
@@ -250,6 +351,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   if (game.buzz_state === 'RESULT') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 relative overflow-hidden">
+        {renderFeedbackOverlay()}
         <div className="w-full max-w-sm space-y-4 relative z-10 py-4">
           {/* Revealed Song Title & Artist Card */}
           <div className="glass-panel rounded-3xl p-5 border border-emerald-500/40 bg-gradient-to-b from-emerald-950/60 via-slate-900 to-slate-950 shadow-2xl relative overflow-hidden text-center space-y-3">
@@ -310,6 +412,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           : ''
       }`}
     >
+      {renderFeedbackOverlay()}
       {/* Wrong Answer temporary alert banner */}
       {feedbackAnim === 'wrong' && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-rose-600/90 border border-rose-400/50 text-white font-black text-xs uppercase tracking-wider shadow-2xl shadow-rose-600/40 animate-bounce">
