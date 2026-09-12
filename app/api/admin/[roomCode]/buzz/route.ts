@@ -2,34 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase/server'
 import { getGameMode, getTournamentState } from '@/lib/tournament-utils'
 
-interface BuzzCandidate {
-  playerId: string
-  playerName: string
-  pressedAt: number
-}
-
-interface ActiveRace {
-  roomCode: string
-  gameId: string
-  attempt: number
-  best: BuzzCandidate
-  resolveFns: Array<(result: { winner: boolean; winnerId: string; winnerName: string }) => void>
-  timer: NodeJS.Timeout
-}
-
-// In-memory race window map: key is `${roomCode}:${gameId}:${attempt}`
-const activeRaces = new Map<string, ActiveRace>()
-
 /**
  * POST /api/admin/[roomCode]/buzz
- * Player attempts to buzz in.
- * Headers: x-session-token: <token>
- * Body: { playerId: string, pressedAt?: number }
- * Returns: { winner: boolean, winnerId: string | null, winnerName: string }
- *
- * Implements high-precision, fair 150ms time-calibrated arbitration:
- * Equalizes latency differences so a player on higher-ping connection who physically
- * pressed earlier is guaranteed to win over a later press on low-ping connection.
+ * Ultra-responsive atomic buzzer endpoint.
+ * Evaluates session, checks exclusions, and executes atomic PostgreSQL lock in <50ms.
  */
 export async function POST(
   req: NextRequest,
@@ -40,7 +16,7 @@ export async function POST(
     const normalizedRoom = roomCode.toUpperCase()
     const sessionToken = req.headers.get('x-session-token')
     const body = await req.json()
-    const { playerId, pressedAt } = body
+    const { playerId } = body
 
     if (!sessionToken || !playerId) {
       return NextResponse.json({ error: 'Missing credentials' }, { status: 400 })
@@ -111,7 +87,8 @@ export async function POST(
       }
     }
 
-    // Check if player is excluded from this song (answered wrong previously)
+    // ── STRICT EXCLUSION CHECK ───────────────────────────────────────
+    // If player answered wrong on this song, they are NOT permitted to buzz again!
     if (player.excluded_attempt !== null) {
       return NextResponse.json(
         { error: 'Anda sudah menjawab salah untuk lagu ini.' },
@@ -119,44 +96,7 @@ export async function POST(
       )
     }
 
-    // Validate and bound the reported physical pressedAt timestamp against cheating/clock drift
-    const now = Date.now()
-    const validPressedAt =
-      typeof pressedAt === 'number' && pressedAt <= now + 100 && pressedAt >= now - 5000
-        ? pressedAt
-        : now
-
-    const raceKey = `${normalizedRoom}:${game.id}:${game.current_attempt}`
-
-    // ── 1. ACTIVE RACE WINDOW IN PROGRESS ─────────────────────────────────
-    let race = activeRaces.get(raceKey)
-    if (race) {
-      // Compare pressedAt: if this candidate physically pressed EARLIER, they take the lead!
-      if (validPressedAt < race.best.pressedAt) {
-        race.best = {
-          playerId,
-          playerName: player.name,
-          pressedAt: validPressedAt,
-        }
-      }
-
-      // Wait for the arbitration window to settle and return the fair outcome
-      const result = await new Promise<{ winner: boolean; winnerId: string; winnerName: string }>(
-        (resolve) => {
-          race!.resolveFns.push((finalRes) => {
-            resolve({
-              winner: finalRes.winnerId === playerId,
-              winnerId: finalRes.winnerId,
-              winnerName: finalRes.winnerName,
-            })
-          })
-        }
-      )
-
-      return NextResponse.json(result)
-    }
-
-    // ── 2. ALREADY LOCKED OR PREVIOUSLY CLAIMED IN DB ────────────────────
+    // If game is already locked or not READY, return the existing winner immediately
     if (game.buzz_state !== 'READY' || game.buzz_winner_id !== null) {
       let currentWinnerName = 'Pemain Lain'
       const existingWinnerId = game.buzz_winner_id
@@ -184,62 +124,58 @@ export async function POST(
       })
     }
 
-    // ── 3. FIRST BUZZER ARRIVAL: START 150MS FAIR ARBITRATION WINDOW ──────
-    const result = await new Promise<{ winner: boolean; winnerId: string; winnerName: string }>(
-      (resolve) => {
-        const firstCandidate: BuzzCandidate = {
-          playerId,
-          playerName: player.name,
-          pressedAt: validPressedAt,
-        }
+    // ── ATOMIC FAST CLAIM IN POSTGRESQL (ZERO ARTIFICIAL DELAYS) ─────
+    const { data: claimedGame } = await supabase
+      .from('games')
+      .update({
+        buzz_winner_id: playerId,
+        buzz_state: 'LOCKED',
+      })
+      .eq('id', game.id)
+      .eq('buzz_state', 'READY')
+      .is('buzz_winner_id', null)
+      .select('id, buzz_winner_id')
+      .maybeSingle()
 
-        const newRace: ActiveRace = {
-          roomCode: normalizedRoom,
-          gameId: game.id,
-          attempt: game.current_attempt,
-          best: firstCandidate,
-          resolveFns: [
-            (finalRes) => {
-              resolve({
-                winner: finalRes.winnerId === playerId,
-                winnerId: finalRes.winnerId,
-                winnerName: finalRes.winnerName,
-              })
-            },
-          ],
-          timer: setTimeout(async () => {
-            activeRaces.delete(raceKey)
-            const trueWinner = newRace.best
+    if (claimedGame?.buzz_winner_id === playerId) {
+      return NextResponse.json({
+        winner: true,
+        winnerId: playerId,
+        winnerName: player.name,
+      })
+    }
 
-            // Authoritatively persist the true winner to Supabase Postgres
-            try {
-              await supabase
-                .from('games')
-                .update({
-                  buzz_winner_id: trueWinner.playerId,
-                  buzz_state: 'LOCKED',
-                })
-                .eq('id', game.id)
-                .eq('buzz_state', 'READY')
-            } catch (err) {
-              console.error('Failed to commit buzz winner to DB:', err)
-            }
+    // If another contestant claimed it first in the database, fetch winner details
+    const { data: freshGame } = await supabase
+      .from('games')
+      .select('buzz_winner_id')
+      .eq('id', game.id)
+      .single()
 
-            // Distribute fair verdict to all waiting requests in this window
-            const outcome = {
-              winner: true,
-              winnerId: trueWinner.playerId,
-              winnerName: trueWinner.playerName,
-            }
-            newRace.resolveFns.forEach((fn) => fn(outcome))
-          }, 150), // 150ms window: completely eliminates ping advantages while feeling instant
-        }
+    const winnerId = freshGame?.buzz_winner_id || game.buzz_winner_id
+    let winnerName = 'Pemain Lain'
 
-        activeRaces.set(raceKey, newRace)
+    if (winnerId) {
+      if (winnerId === playerId) {
+        return NextResponse.json({
+          winner: true,
+          winnerId: playerId,
+          winnerName: player.name,
+        })
       }
-    )
+      const { data: wp } = await supabase
+        .from('players')
+        .select('name')
+        .eq('id', winnerId)
+        .single()
+      if (wp?.name) winnerName = wp.name
+    }
 
-    return NextResponse.json(result)
+    return NextResponse.json({
+      winner: false,
+      winnerId: winnerId || null,
+      winnerName,
+    })
   } catch (err) {
     console.error('POST /api/admin/[roomCode]/buzz error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

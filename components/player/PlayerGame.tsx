@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { useGameState } from '@/lib/hooks/useGameState'
+import { useGameState, broadcastFastBuzz } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { usePresence } from '@/lib/hooks/usePresence'
 import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
@@ -187,7 +187,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const isWinner =
     game.buzz_winner_id === session.playerId ||
     (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
-  const isExcluded = me?.excluded_attempt === game.current_attempt
+  const isExcluded = Boolean(me?.excluded_attempt !== null)
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
   // Tournament state helpers
@@ -273,6 +273,11 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       if (data.winner === true) {
         setLocalWinner(true)
         playDingSound()
+        broadcastFastBuzz(game.id, {
+          type: 'BUZZ_WINNER',
+          winnerId: session.playerId,
+          winnerName: session.playerName,
+        })
       } else {
         setLocalWinner(false)
         const matched = players.find((p) => p.id === data.winnerId)

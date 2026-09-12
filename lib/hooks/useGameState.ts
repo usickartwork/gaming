@@ -47,7 +47,7 @@ export function useGameState(gameId: string, initialGame: Game): Game {
               buzz_state: msg.buzzState,
               buzz_winner_id: msg.winnerId ?? null,
             }))
-          } else if (msg.type === 'BUZZ_CLAIM') {
+          } else if (msg.type === 'BUZZ_WINNER') {
             setGame((prev) => ({
               ...prev,
               buzz_state: 'LOCKED',
