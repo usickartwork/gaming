@@ -1,8 +1,10 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { useGameState } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { usePresence } from '@/lib/hooks/usePresence'
+import { playDingSound } from '@/lib/audio'
 import { BuzzButton } from './BuzzButton'
 import { Leaderboard } from '@/components/shared/Leaderboard'
 import { WaitingRoom } from '@/components/shared/WaitingRoom'
@@ -18,23 +20,53 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const game = useGameState(initialGame.id, initialGame)
   const players = usePlayers(initialGame.id, initialPlayers)
 
+  const [isBuzzing, setIsBuzzing] = useState(false)
+  const [localWinner, setLocalWinner] = useState<boolean | null>(null)
+  const [localWinnerName, setLocalWinnerName] = useState<string | null>(null)
+
+  // Reset local state when host enables buzz again
+  useEffect(() => {
+    if (game.buzz_state === 'READY' && game.buzz_winner_id === null) {
+      setLocalWinner(null)
+      setLocalWinnerName(null)
+      setIsBuzzing(false)
+    }
+  }, [game.buzz_state, game.buzz_winner_id])
+
   // Track online presence
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
 
   const me = players.find((p) => p.id === session.playerId)
-  const isWinner = game.buzz_winner_id === session.playerId
+  const isWinner = localWinner === true || game.buzz_winner_id === session.playerId
   const isExcluded = me?.excluded_attempt === game.current_attempt
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
   const handleBuzz = async () => {
-    await fetch(`/api/admin/${game.room_code}/buzz`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-session-token': session.sessionToken,
-      },
-      body: JSON.stringify({ playerId: session.playerId }),
-    })
+    if (isBuzzing) return
+    setIsBuzzing(true)
+
+    try {
+      const res = await fetch(`/api/admin/${game.room_code}/buzz`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-token': session.sessionToken,
+        },
+        body: JSON.stringify({ playerId: session.playerId }),
+      })
+      const data = await res.json()
+      if (data.winner) {
+        setLocalWinner(true)
+        playDingSound()
+      } else if (data.winnerId) {
+        setLocalWinner(false)
+        setLocalWinnerName(data.winnerName || 'Someone')
+      }
+    } catch (err) {
+      console.error('Buzz error:', err)
+    } finally {
+      setIsBuzzing(false)
+    }
   }
 
   // ── Waiting Room ─────────────────────────────────────────────────
@@ -66,13 +98,13 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   }
 
   // ── LOCKED: Someone else won ────────────────────────────────────
-  if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
+  if ((localWinner === false || game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 text-center">
         <div className="text-8xl mb-6">🔒</div>
         <h1 className="text-white text-3xl font-black mb-2">LOCKED</h1>
         <p className="text-white/60 text-lg mb-8">
-          {buzzWinnerPlayer?.name ?? 'Someone'} buzzed first.
+          {localWinnerName || buzzWinnerPlayer?.name || 'Someone'} buzzed first.
         </p>
         <div className="bg-white/10 rounded-2xl px-6 py-3">
           <p className="text-white/50 text-sm">Score kamu</p>
@@ -125,6 +157,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           isWinner={isWinner}
           onBuzz={handleBuzz}
           isExcluded={isExcluded}
+          isBuzzing={isBuzzing}
         />
       </div>
 

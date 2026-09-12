@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useGameState } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
+import { playDingSound } from '@/lib/audio'
 import { AudioPlayer } from './AudioPlayer'
 import { BuzzControlPanel } from './BuzzControlPanel'
 import { SongSelector } from './SongSelector'
@@ -31,6 +32,15 @@ export function HostDashboard({
 
   const currentSong = songs.find((s) => s.id === game.current_song_id) ?? null
   const buzzWinner = players.find((p) => p.id === game.buzz_winner_id) ?? null
+
+  // Play sound when someone buzzes in
+  const lastWinnerRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (game.buzz_winner_id && game.buzz_winner_id !== lastWinnerRef.current) {
+      playDingSound()
+    }
+    lastWinnerRef.current = game.buzz_winner_id
+  }, [game.buzz_winner_id])
 
   // ── Host API helper ──────────────────────────────────────────────
   const hostAction = useCallback(
