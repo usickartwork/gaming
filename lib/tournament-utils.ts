@@ -361,12 +361,13 @@ export function getGameDisplayName(name: string): string {
 /**
  * Parses tournament state from game object with seamless backwards compatibility.
  */
-export function getTournamentState(game: { tournament_state?: TournamentState | null; name: string }): TournamentState | null {
+export function getTournamentState(game: { tournament_state?: TournamentState | null; name: string } | null | undefined): TournamentState | null {
+  if (!game) return null
   let parsed: TournamentState | null = null
 
   if (game.tournament_state && typeof game.tournament_state === 'object') {
-    parsed = game.tournament_state
-  } else if (game.name && game.name.includes('|||')) {
+    parsed = { ...game.tournament_state }
+  } else if (game.name && typeof game.name === 'string' && game.name.includes('|||')) {
     try {
       const jsonStr = game.name.split('|||')[1]
       parsed = JSON.parse(jsonStr)
@@ -376,20 +377,24 @@ export function getTournamentState(game: { tournament_state?: TournamentState | 
     }
   }
 
-  if (parsed) {
-    if (!parsed.groupAPlayerIds) {
-      parsed.groupAPlayerIds = parsed.groupA?.playerIds || []
+  if (parsed && typeof parsed === 'object') {
+    if (!Array.isArray(parsed.matches)) {
+      parsed.matches = []
     }
-    if (!parsed.groupBPlayerIds) {
-      parsed.groupBPlayerIds = parsed.groupB?.playerIds || []
+    if (!Array.isArray(parsed.groupAPlayerIds)) {
+      parsed.groupAPlayerIds = (parsed as any).groupA?.playerIds || []
+    }
+    if (!Array.isArray(parsed.groupBPlayerIds)) {
+      parsed.groupBPlayerIds = (parsed as any).groupB?.playerIds || []
     }
     if (!parsed.phase) {
-      parsed.phase = parsed.matches?.length > 0 ? 'KNOCKOUT' : 'GROUP_A'
+      parsed.phase = parsed.matches.length > 0 ? 'KNOCKOUT' : 'GROUP_A'
     }
     if (!parsed.targetPoints) parsed.targetPoints = 2
-    if (!parsed.readyPlayerIds) parsed.readyPlayerIds = []
+    if (!Array.isArray(parsed.readyPlayerIds)) parsed.readyPlayerIds = []
     if (parsed.countdownEndTime === undefined) parsed.countdownEndTime = null
     if (!parsed.qualifyCount) parsed.qualifyCount = 2
+    if (!parsed.mode) parsed.mode = 'CLASSIC'
   }
 
   return parsed

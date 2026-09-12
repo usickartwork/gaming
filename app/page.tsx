@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import type { PlayerSession } from '@/lib/types'
 import { PhoneIcon, LaptopIcon, ArrowRightIcon } from '@/components/shared/Icons'
@@ -14,6 +14,17 @@ export default function LandingPage() {
   const [hostPassword, setHostPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const joinCode = params.get('join')
+      if (joinCode) {
+        setRoomCode(joinCode.toUpperCase())
+        setTab('join')
+      }
+    }
+  }, [])
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault()

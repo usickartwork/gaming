@@ -85,8 +85,9 @@ export function TournamentBracketModal({
     .sort((a, b) => b.score - a.score)
 
   // Group matches by round for Knockout
+  const matches = tournamentState.matches || []
   const matchesByRound: Record<number, TournamentMatch[]> = {}
-  tournamentState.matches.forEach((m) => {
+  matches.forEach((m) => {
     if (!matchesByRound[m.roundIndex]) {
       matchesByRound[m.roundIndex] = []
     }
@@ -273,7 +274,7 @@ export function TournamentBracketModal({
           {/* TAB 2: KNOCKOUT */}
           {modalTab === 'knockout' && (
             <div className="space-y-4">
-              {tournamentState.matches.length === 0 ? (
+              {matches.length === 0 ? (
                 <div className="text-center py-8 space-y-2">
                   <SwordsIcon size={32} className="text-slate-600 mx-auto" />
                   <p className="text-sm font-bold text-slate-300">Bagan BO3 Belum Tersedia</p>

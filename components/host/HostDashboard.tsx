@@ -662,7 +662,7 @@ export function HostDashboard({
                     if (phase === 'GROUP_A') return 'BABAK PENYISIHAN • GRUP A'
                     if (phase === 'GROUP_B') return 'BABAK PENYISIHAN • GRUP B'
                     if (phase === 'KNOCKOUT') {
-                      return `${tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)?.roundName ?? 'Babak Gugur'} • LIVE DUEL`
+                      return `${tournamentState?.matches?.find((m) => m.id === tournamentState.activeMatchId)?.roundName ?? 'Babak Gugur'} • LIVE DUEL`
                     }
                     return 'MODE TURNAMEN'
                   })()}
@@ -681,7 +681,7 @@ export function HostDashboard({
                     return `Hanya Grup B yang dapat menekan buzzer. Selesaikan 5–7 lagu untuk klasemen.`
                   }
                   if (phase === 'KNOCKOUT') {
-                    const am = tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)
+                    const am = tournamentState?.matches?.find((m) => m.id === tournamentState.activeMatchId)
                     if (!am || !am.player1Id || !am.player2Id) return 'Babak gugur BO3 aktif. Buka tab Bagan Turnamen untuk memilih duel.'
                     const p1 = players.find((p) => p.id === am.player1Id)
                     const p2 = players.find((p) => p.id === am.player2Id)

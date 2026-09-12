@@ -193,7 +193,8 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const inGroupB = Boolean(groupBIds.includes(session.playerId))
   const myGroup = inGroupA ? 'A' : inGroupB ? 'B' : null
 
-  const activeMatch = tournamentState?.matches.find((m) => m.id === tournamentState.activeMatchId)
+  const tsMatches = tournamentState?.matches || []
+  const activeMatch = tsMatches.find((m) => m.id === tournamentState?.activeMatchId)
   const isDuelist = Boolean(
     gameMode === 'KNOCKOUT' &&
     phase === 'KNOCKOUT' &&
@@ -217,10 +218,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const isEliminated = Boolean(
     gameMode === 'KNOCKOUT' &&
     phase === 'KNOCKOUT' &&
-    (!tournamentState?.matches.some(
+    (!tsMatches.some(
       (m) => m.player1Id === session.playerId || m.player2Id === session.playerId
     ) ||
-      tournamentState?.matches.some(
+      tsMatches.some(
         (m) =>
           m.status === 'FINISHED' &&
           (m.player1Id === session.playerId || m.player2Id === session.playerId) &&
@@ -230,12 +231,12 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   const isQualifiedToKnockout = Boolean(
     gameMode === 'KNOCKOUT' &&
-    tournamentState?.matches.some(
+    tsMatches.some(
       (m) => m.player1Id === session.playerId || m.player2Id === session.playerId
     )
   )
 
-  const upcomingMatch = tournamentState?.matches.find(
+  const upcomingMatch = tsMatches.find(
     (m) =>
       m.status === 'UPCOMING' &&
       (m.player1Id === session.playerId || m.player2Id === session.playerId)
@@ -707,10 +708,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-lg font-black text-slate-950 shadow-md shadow-amber-500/20 shrink-0">
-                {session.playerName.charAt(0).toUpperCase()}
+                {(session.playerName || 'P').charAt(0).toUpperCase()}
               </div>
               <div className="truncate">
-                <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName}</p>
+                <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName || 'Pemain'}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-sm" />
                   <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">
@@ -903,10 +904,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-lg font-black text-slate-950 shadow-md shrink-0 ${
               isDuelist ? 'bg-amber-400 shadow-amber-400/30' : 'bg-gradient-to-br from-emerald-400 to-teal-600 shadow-emerald-500/20'
             }`}>
-              {session.playerName.charAt(0).toUpperCase()}
+              {(session.playerName || 'P').charAt(0).toUpperCase()}
             </div>
             <div className="truncate">
-              <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName}</p>
+              <p className="text-white font-extrabold text-sm truncate leading-tight">{session.playerName || 'Pemain'}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${isDuelist ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 shadow-sm shadow-emerald-400'}`} />
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
