@@ -70,16 +70,18 @@ export function SongSelector({
   // If activePlaylistId is set, only show songs in activePlaylist.songIds
   // If activePlaylistId is null, show all songs
   const sectionSongs = activePlaylist
-    ? songs.filter((s) => activePlaylist.songIds.includes(s.id))
+    ? songs.filter((s) => activePlaylist.songIds.some((id) => String(id) === String(s.id)))
     : songs
 
-  // Filtered further by search query
-  const filtered = sectionSongs.filter(
-    (s) =>
-      s.round_type === currentRound &&
-      (s.title.toLowerCase().includes(search.toLowerCase()) ||
-        s.artist.toLowerCase().includes(search.toLowerCase()))
-  )
+  // Filtered further by search query (NEVER hide playlist songs due to round_type!)
+  const filtered = sectionSongs.filter((s) => {
+    const q = search.trim().toLowerCase()
+    if (!q) return true
+    return (
+      (s.title || '').toLowerCase().includes(q) ||
+      (s.artist || '').toLowerCase().includes(q)
+    )
+  })
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && search.trim() && onOpenSpotifySearch) {

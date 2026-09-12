@@ -3,6 +3,8 @@ import { getSupabaseServerClient } from '@/lib/supabase/server'
 import { HostDashboard } from '@/components/host/HostDashboard'
 import { HostSessionLoader } from './HostSessionLoader'
 
+export const dynamic = 'force-dynamic'
+
 interface Props {
   params: Promise<{ roomCode: string }>
 }

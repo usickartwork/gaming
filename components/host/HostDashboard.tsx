@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGameState } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
+import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
 import {
   MicIcon,
@@ -214,9 +215,26 @@ export function HostDashboard({
     [playlists, persistPlaylists]
   )
 
-  // Keep songList updated with prop
+  // Keep songList updated with prop and refresh from Supabase cloud
   useEffect(() => {
     setSongList(songs)
+
+    const fetchLatestSongs = async () => {
+      try {
+        const supabase = getSupabaseBrowserClient()
+        const { data: latest } = await supabase
+          .from('songs')
+          .select('*')
+          .eq('active', true)
+          .order('title')
+        if (latest && latest.length > 0) {
+          setSongList(latest)
+        }
+      } catch (err) {
+        console.warn('Failed to load latest songs:', err)
+      }
+    }
+    fetchLatestSongs()
   }, [songs])
 
   // Check URL param if Spotify just connected
