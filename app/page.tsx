@@ -1,69 +1,188 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import type { PlayerSession } from '@/lib/types'
+
+export default function LandingPage() {
+  const router = useRouter()
+  const [tab, setTab] = useState<'join' | 'create'>('join')
+  const [roomCode, setRoomCode] = useState('')
+  const [playerName, setPlayerName] = useState('')
+  const [gameName, setGameName] = useState('')
+  const [hostPassword, setHostPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    if (!roomCode.trim() || !playerName.trim()) return
+
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/games/${roomCode.toUpperCase()}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: playerName.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Failed to join')
+        return
+      }
+
+      // Save session to localStorage
+      const session: PlayerSession = {
+        playerId: data.playerId,
+        sessionToken: data.sessionToken,
+        gameId: data.gameId,
+        playerName: data.playerName,
+        roomCode: roomCode.toUpperCase(),
+      }
+      localStorage.setItem(`cg-session-${roomCode.toUpperCase()}`, JSON.stringify(session))
+
+      router.push(`/play/${roomCode.toUpperCase()}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    if (!gameName.trim() || !hostPassword.trim()) return
+
+    setLoading(true)
+    try {
+      const res = await fetch('/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: gameName.trim(), hostPassword: hostPassword.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'Failed to create game')
+        return
+      }
+
+      // Save host session
+      sessionStorage.setItem(
+        `cg-host-${data.roomCode}`,
+        JSON.stringify({ gameId: data.gameId, roomCode: data.roomCode, hostPassword: hostPassword.trim() })
+      )
+
+      router.push(`/host/${data.roomCode}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-950 to-black flex flex-col items-center justify-center p-6">
+      {/* Logo */}
+      <div className="text-center mb-10">
+        <div className="text-6xl mb-4">🎵</div>
+        <h1 className="text-white text-4xl font-black tracking-tight">CG GUESS THE SONG</h1>
+        <p className="text-purple-400 mt-2">Real-time music quiz game</p>
+      </div>
+
+      {/* Tab switcher */}
+      <div className="flex bg-white/10 rounded-2xl p-1 mb-6 w-full max-w-sm">
+        <button
+          onClick={() => { setTab('join'); setError('') }}
+          className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+            tab === 'join' ? 'bg-purple-600 text-white' : 'text-white/60'
+          }`}
+        >
+          🎮 Join Game
+        </button>
+        <button
+          onClick={() => { setTab('create'); setError('') }}
+          className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${
+            tab === 'create' ? 'bg-purple-600 text-white' : 'text-white/60'
+          }`}
+        >
+          🏠 Host Game
+        </button>
+      </div>
+
+      {/* Forms */}
+      <div className="w-full max-w-sm">
+        {tab === 'join' ? (
+          <form onSubmit={handleJoin} className="space-y-4">
+            <div>
+              <label className="text-white/60 text-xs uppercase tracking-wider block mb-2">
+                Room Code
+              </label>
+              <input
+                type="text"
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                placeholder="e.g. A7K29"
+                maxLength={5}
+                className="w-full bg-white/10 text-white text-2xl font-black text-center tracking-[0.3em] placeholder-white/20 rounded-2xl px-4 py-4 outline-none focus:ring-2 focus:ring-purple-500 uppercase"
+              />
+            </div>
+            <div>
+              <label className="text-white/60 text-xs uppercase tracking-wider block mb-2">
+                Your Name
+              </label>
+              <input
+                type="text"
+                value={playerName}
+                onChange={(e) => setPlayerName(e.target.value)}
+                placeholder="Enter your name"
+                maxLength={20}
+                className="w-full bg-white/10 text-white text-lg text-center placeholder-white/20 rounded-2xl px-4 py-4 outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading || !roomCode || !playerName}
+              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xl font-black py-5 rounded-2xl transition-all active:scale-95"
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+              {loading ? 'Joining...' : 'JOIN GAME'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div>
+              <label className="text-white/60 text-xs uppercase tracking-wider block mb-2">
+                Game Name
+              </label>
+              <input
+                type="text"
+                value={gameName}
+                onChange={(e) => setGameName(e.target.value)}
+                placeholder="e.g. CG September 2026"
+                className="w-full bg-white/10 text-white placeholder-white/20 rounded-2xl px-4 py-4 outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            <div>
+              <label className="text-white/60 text-xs uppercase tracking-wider block mb-2">
+                Host Password
+              </label>
+              <input
+                type="password"
+                value={hostPassword}
+                onChange={(e) => setHostPassword(e.target.value)}
+                placeholder="Password for host controls"
+                className="w-full bg-white/10 text-white placeholder-white/20 rounded-2xl px-4 py-4 outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading || !gameName || !hostPassword}
+              className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xl font-black py-5 rounded-2xl transition-all active:scale-95"
             >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+              {loading ? 'Creating...' : 'CREATE GAME'}
+            </button>
+          </form>
+        )}
+      </div>
     </div>
-  );
+  )
 }

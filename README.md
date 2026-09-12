@@ -1,36 +1,113 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CG Guess The Song 🎵
 
-## Getting Started
+Real-time multiplayer music quiz game. Built with Next.js 15 + Supabase.
 
-First, run the development server:
+## Setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+### 1. Buat Supabase Project
+
+1. Daftar di [supabase.com](https://supabase.com) dan buat project baru
+2. Buat bucket Storage bernama `audio` (set sebagai **Public**)
+3. Upload file MP3 ke folder `audio/` di bucket tersebut
+4. Salin URL Supabase project kamu
+
+### 2. Setup Database
+
+Buka **SQL Editor** di Supabase dashboard dan jalankan ketiga file ini secara berurutan:
+
+```
+supabase/migrations/001_schema.sql
+supabase/migrations/002_rls.sql
+supabase/migrations/003_functions.sql
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Kemudian isi data lagu (edit `supabase/seed.sql` dengan URL audio yang benar lalu jalankan):
+```
+supabase/seed.sql
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.local.example .env.local
+```
 
-## Learn More
+Isi `.env.local` dengan credentials dari Supabase dashboard:
+- `NEXT_PUBLIC_SUPABASE_URL` — dari Settings > API
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — dari Settings > API  
+- `SUPABASE_SERVICE_ROLE_KEY` — dari Settings > API (jangan di-expose ke publik)
 
-To learn more about Next.js, take a look at the following resources:
+### 4. Run Development Server
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm install
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Buka [http://localhost:3000](http://localhost:3000)
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## How to Play
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Host (Laptop)
+1. Buka website → **Host Game**
+2. Isi nama game + buat password host
+3. Copy **Room Code** yang muncul → bagikan ke pemain
+4. Tunggu pemain join → klik **START GAME**
+5. Pilih lagu → tekan **PLAY**
+6. Klik **ENABLE BUZZ** untuk membuka buzzer
+7. Lihat siapa yang buzz pertama → klik **CORRECT** atau **WRONG**
+
+### Player (HP)
+1. Buka website → **Join Game**
+2. Masukkan Room Code + nama kamu
+3. Tunggu host mulai game
+4. Tekan tombol **🔴 BUZZ** besar ketika tahu jawabannya
+5. Jika menang: jawab secara lisan
+6. Lihat score berubah real-time
+
+---
+
+## Scoring (Default)
+
+| Attempt | Correct | Wrong |
+|---------|---------|-------|
+| 1       | +10     | -3    |
+| 2       | +7      | -2    |
+| 3       | +5      | 0     |
+
+---
+
+## Architecture
+
+- **Frontend**: Next.js 15 App Router
+- **Database**: Supabase PostgreSQL
+- **Real-time**: Supabase Realtime (Postgres Changes + Presence)
+- **Storage**: Supabase Storage (audio files)
+- **Auth**: Simple per-game password for host, session token for players
+
+### First Buzz (Atomic)
+
+Penentuan siapa yang buzz pertama menggunakan atomic SQL transaction:
+
+```sql
+UPDATE games 
+SET buzz_state = 'LOCKED', buzz_winner_id = $player_id
+WHERE id = $game_id 
+  AND buzz_state = 'READY' 
+  AND buzz_winner_id IS NULL
+RETURNING buzz_winner_id;
+```
+
+Hanya satu player yang bisa "menang" bahkan jika 12 HP menekan di saat yang sama.
+
+---
+
+## Tech Stack
+
+- Next.js 15 (App Router)
+- Supabase (PostgreSQL + Realtime + Storage)
+- Tailwind CSS
+- TypeScript
+- bcryptjs (host password hashing)
