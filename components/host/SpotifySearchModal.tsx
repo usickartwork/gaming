@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { CrossIcon, MusicIcon, CheckIcon } from '@/components/shared/Icons'
 
-interface SpotifyTrack {
+export interface SpotifyTrack {
   id: string
   title: string
   artist: string
@@ -18,6 +18,7 @@ interface SpotifySearchModalProps {
   isOpen: boolean
   onClose: () => void
   onSelectTrack: (track: SpotifyTrack) => Promise<void>
+  initialQuery?: string
   isLoading?: boolean
 }
 
@@ -25,45 +26,79 @@ export function SpotifySearchModal({
   isOpen,
   onClose,
   onSelectTrack,
+  initialQuery = '',
   isLoading = false,
 }: SpotifySearchModalProps) {
   const [query, setQuery] = useState('')
   const [tracks, setTracks] = useState<SpotifyTrack[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
+  const performSearch = async (val: string) => {
+    if (!val.trim()) {
+      setTracks([])
+      setIsSearching(false)
+      setSearchError(null)
+      return
+    }
+
+    setIsSearching(true)
+    setSearchError(null)
+
+    try {
+      const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(val.trim())}`)
+      const data = await res.json()
+      if (res.ok && data.tracks) {
+        setTracks(data.tracks)
+        setSearchError(null)
+      } else {
+        setTracks([])
+        setSearchError(data.error || 'Gagal mencari lagu di Spotify')
+      }
+    } catch (err) {
+      console.error('Spotify search failed:', err)
+      setTracks([])
+      setSearchError('Terjadi kendala jaringan saat menghubungi Spotify.')
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      const initial = initialQuery.trim()
+      setQuery(initial)
+      if (initial) {
+        performSearch(initial)
+      } else {
+        setTracks([])
+        setSearchError(null)
+      }
+    } else {
       setQuery('')
       setTracks([])
       setSelectedUri(null)
+      setSearchError(null)
+      if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [isOpen])
+  }, [isOpen, initialQuery])
 
-  const handleSearch = (val: string) => {
+  const handleInputChange = (val: string) => {
     setQuery(val)
     if (debounceRef.current) clearTimeout(debounceRef.current)
 
     if (!val.trim()) {
       setTracks([])
       setIsSearching(false)
+      setSearchError(null)
       return
     }
 
     setIsSearching(true)
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(val.trim())}`)
-        const data = await res.json()
-        if (data.tracks) {
-          setTracks(data.tracks)
-        }
-      } catch (err) {
-        console.error('Spotify search failed:', err)
-      } finally {
-        setIsSearching(false)
-      }
+    debounceRef.current = setTimeout(() => {
+      performSearch(val)
     }, 350)
   }
 
@@ -102,7 +137,7 @@ export function SpotifySearchModal({
             </div>
             <div>
               <h3 className="text-white font-black text-lg tracking-tight">Cari Lagu di Spotify</h3>
-              <p className="text-slate-400 text-xs">Ketik judul lagu atau nama artis untuk dimainkan langsung</p>
+              <p className="text-slate-400 text-xs">Ketik judul lagu atau nama musisi untuk dipilih langsung</p>
             </div>
           </div>
 
@@ -120,15 +155,34 @@ export function SpotifySearchModal({
           <input
             type="text"
             value={query}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Ketik judul lagu atau nama musisi..."
+            onChange={(e) => handleInputChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                performSearch(query)
+              }
+            }}
+            placeholder="Ketik judul lagu atau nama musisi... (lalu Enter)"
             autoFocus
-            className="w-full py-3.5 px-4 rounded-2xl bg-slate-900 border border-white/10 focus:border-emerald-400 text-white font-medium text-sm outline-none transition-all placeholder:text-slate-500"
+            className="w-full py-3.5 px-4 pr-11 rounded-2xl bg-slate-900 border border-white/10 focus:border-emerald-400 text-white font-medium text-sm outline-none transition-all placeholder:text-slate-500"
           />
           {isSearching && (
             <div className="absolute right-4 top-3.5 w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
           )}
         </div>
+
+        {/* Error notification if any */}
+        {searchError && (
+          <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold flex items-center justify-between gap-2 shrink-0">
+            <span>{searchError}</span>
+            <button
+              type="button"
+              onClick={() => performSearch(query)}
+              className="text-[11px] underline hover:text-white shrink-0"
+            >
+              Coba lagi
+            </button>
+          </div>
+        )}
 
         {/* Results List */}
         <div className="overflow-y-auto space-y-2 flex-1 pr-1 min-h-[220px]">
@@ -176,17 +230,17 @@ export function SpotifySearchModal({
             )
           })}
 
-          {!isSearching && query.trim() && tracks.length === 0 && (
+          {!isSearching && !searchError && query.trim() && tracks.length === 0 && (
             <div className="text-center py-12 text-slate-500 space-y-2">
               <p className="text-sm font-semibold">Tidak ada lagu ditemukan untuk &quot;{query}&quot;</p>
-              <p className="text-xs">Coba cari dengan kata kunci judul atau nama artis yang lebih spesifik.</p>
+              <p className="text-xs">Coba cari dengan kata kunci judul atau nama musisi yang lebih umum.</p>
             </div>
           )}
 
           {!query.trim() && (
             <div className="text-center py-12 text-slate-500 space-y-1">
               <p className="text-sm font-semibold text-slate-400">Pencarian Katalog Spotify</p>
-              <p className="text-xs">Ketik nama lagu di atas untuk memuat pilihan lagu dari Spotify.</p>
+              <p className="text-xs">Ketik judul lagu atau nama penyanyi di atas untuk memuat pilihan lagu.</p>
             </div>
           )}
         </div>
