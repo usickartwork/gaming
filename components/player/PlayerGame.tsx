@@ -157,6 +157,16 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_winner_id, session.playerId, players])
 
+  // Auto logout and redirect when game ends / room deleted by host
+  useEffect(() => {
+    if (game.status === 'FINAL_RESULT') {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(`cg-session-${game.room_code}`)
+      }
+      router.push('/')
+    }
+  }, [game.status, game.room_code, router])
+
   // Track online presence
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
 
@@ -359,48 +369,127 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     )
   }
 
-  // ── FINAL_RESULT state (Game ended / room deleted) ─────────────
+  // ── FINAL_RESULT state (Game ended / room deleted by host) ───────
+  // Auto-logged out via useEffect and redirected to login page
   if (game.status === 'FINAL_RESULT') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
-        <div className="absolute inset-0 bg-amber-500/10 blur-[120px] pointer-events-none" />
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-slate-950 select-none">
+        <div className="w-12 h-12 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin mb-4 mx-auto" />
+        <p className="text-white font-black text-lg">Permainan Telah Selesai</p>
+        <p className="text-slate-400 text-xs mt-1">Host telah mengakhiri sesi. Mengalihkan ke halaman utama...</p>
+      </div>
+    )
+  }
 
-        <div className="w-full max-w-sm space-y-6 relative z-10 py-6">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-400/20 to-amber-600/10 border-2 border-amber-400/40 flex items-center justify-center text-amber-400 mx-auto shadow-2xl shadow-amber-500/30 animate-bounce">
-            <TrophyIcon size={40} />
+  // ── GAME FINISHED / ROUND_COMPLETE / TOURNAMENT CHAMPION ──────────
+  const isTournamentChampion = gameMode === 'KNOCKOUT' && Boolean(tournamentState?.championId)
+  const isGameCompleted = game.status === 'ROUND_COMPLETE' || isTournamentChampion
+
+  if (isGameCompleted) {
+    const championPlayer = tournamentState?.championId
+      ? players.find((p) => p.id === tournamentState.championId)
+      : null
+    const sorted = [...players].sort((a, b) => b.score - a.score)
+    const grandWinner = championPlayer || sorted[0]
+    const isMeWinner = grandWinner?.id === session.playerId
+    const myRank = sorted.findIndex((p) => p.id === session.playerId) + 1
+
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-start p-4 sm:p-6 text-center relative overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 select-none">
+        {/* Radiant golden backdrop glow */}
+        <div className="fixed inset-0 bg-amber-500/15 blur-[140px] pointer-events-none" />
+
+        <TournamentBracketModal
+          isOpen={showBracketModal}
+          onClose={() => setShowBracketModal(false)}
+          tournamentState={tournamentState}
+          players={players}
+          currentPlayerId={session.playerId}
+        />
+
+        <div className="w-full max-w-md space-y-5 relative z-10 py-6 mx-auto">
+          {/* Top Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-black text-xs uppercase tracking-widest shadow-xl shadow-amber-500/30 animate-pulse">
+            <CrownIcon size={16} />
+            <span>{isTournamentChampion ? 'JUARA TURNAMEN 1v1 BO3' : 'PERMAINAN SELESAI'}</span>
           </div>
 
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-2 shadow-lg shadow-amber-400/30">
-              PERMAINAN SELESAI
+          {/* Grand Winner Card */}
+          <div className="glass-panel rounded-3xl p-6 sm:p-7 border-2 border-amber-400/50 bg-gradient-to-b from-amber-950/40 via-slate-900/90 to-slate-900/90 shadow-2xl shadow-amber-950/60 space-y-4">
+            <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-amber-400/30 blur-xl animate-ping" />
+              <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 flex items-center justify-center text-slate-950 shadow-2xl shadow-amber-400/50 transform hover:scale-105 transition-transform">
+                <TrophyIcon size={44} />
+              </div>
             </div>
-            <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">
-              Terima Kasih Telah Bermain!
-            </h1>
-            <p className="text-slate-400 text-xs mt-1">
-              Host telah menyelesaikan sesi permainan ini.
-            </p>
+
+            <div className="space-y-1">
+              <p className="text-amber-400 text-xs font-black uppercase tracking-widest">
+                👑 JUARA 1 • PEMENANG UTAMA
+              </p>
+              <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight drop-shadow-md">
+                {grandWinner?.name ?? 'Pemenang'}
+              </h1>
+              <p className="text-slate-300 text-xs sm:text-sm font-semibold">
+                {isTournamentChampion
+                  ? 'Pemenang Grand Final Turnamen BO3'
+                  : `Skor Tertinggi: ${grandWinner?.score ?? 0} Poin`}
+              </p>
+            </div>
+
+            {/* Personalized status banner */}
+            <div
+              className={`p-3.5 rounded-2xl border text-xs font-bold ${
+                isMeWinner
+                  ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300 shadow-lg shadow-emerald-500/10'
+                  : 'bg-white/5 border-white/10 text-slate-300'
+              }`}
+            >
+              {isMeWinner ? (
+                <div className="flex items-center justify-center gap-2 text-sm font-black">
+                  <span>🎉</span>
+                  <span>SELAMAT! KAMU ADALAH JUARA 1!</span>
+                  <span>🎉</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <span>Peringkat Kamu:</span>
+                  <span className="font-mono font-black text-amber-400 text-sm">
+                    #{myRank > 0 ? myRank : '-'} ({me?.score ?? 0} Poin)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {gameMode === 'KNOCKOUT' && (
+              <button
+                type="button"
+                onClick={() => setShowBracketModal(true)}
+                className="w-full py-2.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                <SwordsIcon size={14} />
+                <span>Lihat Bagan Lengkap & Babak Grup</span>
+              </button>
+            )}
           </div>
 
-          {/* Final Standings */}
-          <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl text-left">
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2 text-center">
-              Klasemen Akhir
-            </p>
+          {/* Full Leaderboard */}
+          <div className="glass-panel rounded-3xl p-5 border border-white/10 shadow-2xl text-left space-y-3">
+            <div className="flex items-center justify-between border-b border-white/5 pb-2 px-1">
+              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                Klasemen Akhir Seluruh Pemain
+              </span>
+              <span className="text-emerald-400 text-xs font-mono font-black">
+                {players.length} Pemain
+              </span>
+            </div>
             <Leaderboard players={players} highlightId={session.playerId} />
           </div>
 
-          <button
-            onClick={() => {
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem(`cg-session-${game.room_code}`)
-              }
-              router.push('/')
-            }}
-            className="w-full py-3.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm border border-white/10 transition-all active:scale-95 shadow-lg"
-          >
-            Kembali ke Beranda
-          </button>
+          {/* Bottom Host Wait Notice */}
+          <p className="text-slate-500 text-xs">
+            Menunggu host melanjutkan ronde atau menyelesaikan permainan...
+          </p>
         </div>
       </div>
     )

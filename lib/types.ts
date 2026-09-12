@@ -49,6 +49,7 @@ export interface TournamentState {
   groupB?: GroupData
   readyPlayerIds?: string[]
   countdownEndTime?: number | null
+  qualifyCount?: 2 | 3
 }
 
 export interface Game {

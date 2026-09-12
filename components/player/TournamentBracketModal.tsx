@@ -53,6 +53,7 @@ export function TournamentBracketModal({
   }
 
   const champion = getPlayer(tournamentState.championId)
+  const qualifyCount = tournamentState.qualifyCount === 3 ? 3 : 2
 
   const groupAIds = tournamentState.groupAPlayerIds || tournamentState.groupA?.playerIds || []
   const groupBIds = tournamentState.groupBPlayerIds || tournamentState.groupB?.playerIds || []
@@ -112,7 +113,7 @@ export function TournamentBracketModal({
               <p className="text-slate-400 text-xs">
                 {phase === 'KNOCKOUT'
                   ? 'Babak Gugur BO3 (First to 2 Poin)'
-                  : 'Penyisihan Grup (Top 2 Lolos ke BO3)'}
+                  : `Penyisihan Grup (Top ${qualifyCount} Lolos ke BO3)`}
               </p>
             </div>
           </div>
@@ -192,7 +193,7 @@ export function TournamentBracketModal({
                       className={`flex items-center justify-between p-2.5 rounded-xl text-xs transition-all ${
                         item.isMe
                           ? 'bg-teal-500/20 border border-teal-500/40 text-teal-200'
-                          : idx < 2
+                          : idx < qualifyCount
                           ? 'bg-teal-500/10 text-slate-200'
                           : 'bg-slate-950/50 text-slate-400'
                       }`}
@@ -205,9 +206,9 @@ export function TournamentBracketModal({
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-mono font-bold">{item.score} pts</span>
-                        {idx < 2 && (
+                        {idx < qualifyCount && (
                           <span className="text-emerald-400 font-bold text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                            Top 2
+                            Top {qualifyCount}
                           </span>
                         )}
                       </div>
@@ -240,7 +241,7 @@ export function TournamentBracketModal({
                       className={`flex items-center justify-between p-2.5 rounded-xl text-xs transition-all ${
                         item.isMe
                           ? 'bg-teal-500/20 border border-teal-500/40 text-teal-200'
-                          : idx < 2
+                          : idx < qualifyCount
                           ? 'bg-teal-500/10 text-slate-200'
                           : 'bg-slate-950/50 text-slate-400'
                       }`}
@@ -253,9 +254,9 @@ export function TournamentBracketModal({
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="font-mono font-bold">{item.score} pts</span>
-                        {idx < 2 && (
+                        {idx < qualifyCount && (
                           <span className="text-emerald-400 font-bold text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                            Top 2
+                            Top {qualifyCount}
                           </span>
                         )}
                       </div>

@@ -6,7 +6,8 @@ import type { Player, TournamentMatch, TournamentState, TournamentPhase } from '
  */
 export function initTournamentState(
   players: Player[],
-  targetPoints: number = 2
+  targetPoints: number = 2,
+  qualifyCount: 2 | 3 = 2
 ): TournamentState {
   const shuffled = [...players].sort(() => Math.random() - 0.5)
   const groupAPlayerIds: string[] = []
@@ -29,6 +30,7 @@ export function initTournamentState(
     activeMatchId: null,
     targetPoints: targetPoints || 2,
     championId: null,
+    qualifyCount: qualifyCount || 2,
   }
 }
 
@@ -40,14 +42,18 @@ export function shuffleTournamentGroups(
   players: Player[],
   targetPoints: number = 2
 ): TournamentState {
-  return initTournamentState(players, targetPoints || state?.targetPoints || 2)
+  return initTournamentState(
+    players,
+    targetPoints || state?.targetPoints || 2,
+    state?.qualifyCount || 2
+  )
 }
 
 /**
  * Sets tournament phase:
  * - 'GROUP_A': Only Group A can buzz
  * - 'GROUP_B': Only Group B can buzz
- * - 'KNOCKOUT': Automatically takes Top 2 from Group A and Top 2 from Group B, generates Semifinals and Grand Final!
+ * - 'KNOCKOUT': Automatically takes Top 2 or Top 3 from Group A and Group B, generates Play-offs / Semifinals and Grand Final!
  */
 export function setTournamentPhase(
   state: TournamentState,
@@ -55,6 +61,8 @@ export function setTournamentPhase(
   players: Player[]
 ): TournamentState {
   if (phase === 'KNOCKOUT') {
+    const qualifyCount = state.qualifyCount === 3 ? 3 : 2
+
     // Sort Group A players by current score
     const groupAPlayers = players
       .filter((p) => state.groupAPlayerIds.includes(p.id))
@@ -67,59 +75,149 @@ export function setTournamentPhase(
 
     const a1 = groupAPlayers[0]?.id || null
     const a2 = groupAPlayers[1]?.id || null
+    const a3 = groupAPlayers[2]?.id || null
+
     const b1 = groupBPlayers[0]?.id || null
     const b2 = groupBPlayers[1]?.id || null
+    const b3 = groupBPlayers[2]?.id || null
 
-    const matches: TournamentMatch[] = [
-      {
-        id: 'sf1',
-        roundIndex: 0,
-        roundName: 'Semifinal 1 (BO3)',
-        matchIndex: 0,
-        player1Id: a1,
-        player2Id: b2,
-        player1Score: 0,
-        player2Score: 0,
-        winnerId: null,
-        nextMatchId: 'final',
-        nextMatchSlot: 1,
-        status: 'ACTIVE',
-      },
-      {
-        id: 'sf2',
-        roundIndex: 0,
-        roundName: 'Semifinal 2 (BO3)',
-        matchIndex: 1,
-        player1Id: b1,
-        player2Id: a2,
-        player1Score: 0,
-        player2Score: 0,
-        winnerId: null,
-        nextMatchId: 'final',
-        nextMatchSlot: 2,
-        status: 'UPCOMING',
-      },
-      {
-        id: 'final',
-        roundIndex: 1,
-        roundName: 'Grand Final (BO3)',
-        matchIndex: 0,
-        player1Id: null,
-        player2Id: null,
-        player1Score: 0,
-        player2Score: 0,
-        winnerId: null,
-        nextMatchId: null,
-        nextMatchSlot: null,
-        status: 'UPCOMING',
-      },
-    ]
+    let matches: TournamentMatch[] = []
+    let initialActiveId = 'sf1'
+
+    if (qualifyCount === 3) {
+      // 3 lolos per group = 6 players
+      // QF1: A2 vs B3 -> winner to SF2 (slot 2)
+      // QF2: B2 vs A3 -> winner to SF1 (slot 2)
+      // SF1: A1 (BYE) vs winner QF2 -> winner to Final (slot 1)
+      // SF2: B1 (BYE) vs winner QF1 -> winner to Final (slot 2)
+      // Final: Winner SF1 vs Winner SF2
+      matches = [
+        {
+          id: 'qf1',
+          roundIndex: 0,
+          roundName: 'Perempat Final 1 (BO3)',
+          matchIndex: 0,
+          player1Id: a2,
+          player2Id: b3,
+          player1Score: 0,
+          player2Score: 0,
+          winnerId: null,
+          nextMatchId: 'sf2',
+          nextMatchSlot: 2,
+          status: 'ACTIVE',
+        },
+        {
+          id: 'qf2',
+          roundIndex: 0,
+          roundName: 'Perempat Final 2 (BO3)',
+          matchIndex: 1,
+          player1Id: b2,
+          player2Id: a3,
+          player1Score: 0,
+          player2Score: 0,
+          winnerId: null,
+          nextMatchId: 'sf1',
+          nextMatchSlot: 2,
+          status: 'UPCOMING',
+        },
+        {
+          id: 'sf1',
+          roundIndex: 1,
+          roundName: 'Semifinal 1 (BO3)',
+          matchIndex: 0,
+          player1Id: a1,
+          player2Id: null,
+          player1Score: 0,
+          player2Score: 0,
+          winnerId: null,
+          nextMatchId: 'final',
+          nextMatchSlot: 1,
+          status: 'UPCOMING',
+        },
+        {
+          id: 'sf2',
+          roundIndex: 1,
+          roundName: 'Semifinal 2 (BO3)',
+          matchIndex: 1,
+          player1Id: b1,
+          player2Id: null,
+          player1Score: 0,
+          player2Score: 0,
+          winnerId: null,
+          nextMatchId: 'final',
+          nextMatchSlot: 2,
+          status: 'UPCOMING',
+        },
+        {
+          id: 'final',
+          roundIndex: 2,
+          roundName: 'Grand Final (BO3)',
+          matchIndex: 0,
+          player1Id: null,
+          player2Id: null,
+          player1Score: 0,
+          player2Score: 0,
+          winnerId: null,
+          nextMatchId: null,
+          nextMatchSlot: null,
+          status: 'UPCOMING',
+        },
+      ]
+      initialActiveId = 'qf1'
+    } else {
+      // 2 lolos per group = 4 players
+      matches = [
+        {
+          id: 'sf1',
+          roundIndex: 0,
+          roundName: 'Semifinal 1 (BO3)',
+          matchIndex: 0,
+          player1Id: a1,
+          player2Id: b2,
+          player1Score: 0,
+          player2Score: 0,
+          winnerId: null,
+          nextMatchId: 'final',
+          nextMatchSlot: 1,
+          status: 'ACTIVE',
+        },
+        {
+          id: 'sf2',
+          roundIndex: 0,
+          roundName: 'Semifinal 2 (BO3)',
+          matchIndex: 1,
+          player1Id: b1,
+          player2Id: a2,
+          player1Score: 0,
+          player2Score: 0,
+          winnerId: null,
+          nextMatchId: 'final',
+          nextMatchSlot: 2,
+          status: 'UPCOMING',
+        },
+        {
+          id: 'final',
+          roundIndex: 1,
+          roundName: 'Grand Final (BO3)',
+          matchIndex: 0,
+          player1Id: null,
+          player2Id: null,
+          player1Score: 0,
+          player2Score: 0,
+          winnerId: null,
+          nextMatchId: null,
+          nextMatchSlot: null,
+          status: 'UPCOMING',
+        },
+      ]
+      initialActiveId = 'sf1'
+    }
 
     return {
       ...state,
       phase: 'KNOCKOUT',
       matches,
-      activeMatchId: 'sf1',
+      activeMatchId: initialActiveId,
       championId: null,
     }
   }
@@ -291,6 +389,7 @@ export function getTournamentState(game: { tournament_state?: TournamentState | 
     if (!parsed.targetPoints) parsed.targetPoints = 2
     if (!parsed.readyPlayerIds) parsed.readyPlayerIds = []
     if (parsed.countdownEndTime === undefined) parsed.countdownEndTime = null
+    if (!parsed.qualifyCount) parsed.qualifyCount = 2
   }
 
   return parsed

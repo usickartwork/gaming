@@ -28,6 +28,7 @@ interface TournamentBracketProps {
   onStartGroupB?: () => void
   onFinishGroupB?: () => void
   onResetTournament: () => void
+  onSetQualifyCount?: (count: 2 | 3) => void
   isLoading?: boolean
 }
 
@@ -41,9 +42,11 @@ export function TournamentBracket({
   onStartGroupA,
   onStartGroupB,
   onResetTournament,
+  onSetQualifyCount,
   isLoading = false,
 }: TournamentBracketProps) {
   const [confirmReset, setConfirmReset] = useState(false)
+  const qualifyCount = tournamentState?.qualifyCount === 3 ? 3 : 2
 
   const getPlayer = (id: string | null | undefined): Player | undefined => {
     if (!id) return undefined
@@ -105,7 +108,37 @@ export function TournamentBracket({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+            {/* Qualify Count Option (2 or 3) */}
+            <div className="flex bg-slate-900/90 p-1 rounded-xl border border-white/10 shrink-0">
+              <button
+                type="button"
+                onClick={() => onSetQualifyCount?.(2)}
+                disabled={isLoading || phase === 'KNOCKOUT'}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  qualifyCount === 2
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Top 2 dari masing-masing grup lolos ke babak gugur"
+              >
+                Top 2 Lolos
+              </button>
+              <button
+                type="button"
+                onClick={() => onSetQualifyCount?.(3)}
+                disabled={isLoading || phase === 'KNOCKOUT'}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  qualifyCount === 3
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Top 3 dari masing-masing grup lolos ke babak gugur"
+              >
+                Top 3 Lolos
+              </button>
+            </div>
+
             {onShuffleGroups && (
               <button
                 type="button"
@@ -304,12 +337,12 @@ export function TournamentBracket({
               <p className="text-center py-6 text-slate-500 text-xs">Belum ada pemain di Grup A</p>
             ) : (
               groupAPlayers.map((player, idx) => {
-                const isTop2 = idx < 2
+                const isQualified = idx < qualifyCount
                 return (
                   <div
                     key={player.id}
                     className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                      isTop2
+                      isQualified
                         ? 'bg-emerald-500/10 border-emerald-500/30'
                         : 'bg-slate-900/40 border-white/5'
                     }`}
@@ -321,6 +354,8 @@ export function TournamentBracket({
                             ? 'text-amber-400'
                             : idx === 1
                             ? 'text-slate-300'
+                            : idx === 2 && qualifyCount === 3
+                            ? 'text-emerald-300'
                             : 'text-slate-600'
                         }`}
                       >
@@ -329,14 +364,14 @@ export function TournamentBracket({
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-white font-bold text-sm">{player.name}</span>
-                          {isTop2 && (
+                          {isQualified && (
                             <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-black uppercase tracking-wider border border-emerald-500/30">
-                              Lolos Top 2
+                              Lolos Top {qualifyCount}
                             </span>
                           )}
                         </div>
                         <span className="text-slate-500 text-[11px]">
-                          {isTop2 ? 'Zona Lolos ke Babak Gugur' : 'Zona Gugur'}
+                          {isQualified ? 'Zona Lolos ke Babak Gugur' : 'Zona Gugur'}
                         </span>
                       </div>
                     </div>
@@ -403,12 +438,12 @@ export function TournamentBracket({
               <p className="text-center py-6 text-slate-500 text-xs">Belum ada pemain di Grup B</p>
             ) : (
               groupBPlayers.map((player, idx) => {
-                const isTop2 = idx < 2
+                const isQualified = idx < qualifyCount
                 return (
                   <div
                     key={player.id}
                     className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${
-                      isTop2
+                      isQualified
                         ? 'bg-teal-500/10 border-teal-500/30'
                         : 'bg-slate-900/40 border-white/5'
                     }`}
@@ -420,6 +455,8 @@ export function TournamentBracket({
                             ? 'text-amber-400'
                             : idx === 1
                             ? 'text-slate-300'
+                            : idx === 2 && qualifyCount === 3
+                            ? 'text-teal-300'
                             : 'text-slate-600'
                         }`}
                       >
@@ -428,14 +465,14 @@ export function TournamentBracket({
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-white font-bold text-sm">{player.name}</span>
-                          {isTop2 && (
+                          {isQualified && (
                             <span className="px-2 py-0.5 rounded-md bg-teal-500/20 text-teal-300 text-[10px] font-black uppercase tracking-wider border border-teal-500/30">
-                              Lolos Top 2
+                              Lolos Top {qualifyCount}
                             </span>
                           )}
                         </div>
                         <span className="text-slate-500 text-[11px]">
-                          {isTop2 ? 'Zona Lolos ke Babak Gugur' : 'Zona Gugur'}
+                          {isQualified ? 'Zona Lolos ke Babak Gugur' : 'Zona Gugur'}
                         </span>
                       </div>
                     </div>

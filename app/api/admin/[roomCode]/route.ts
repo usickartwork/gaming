@@ -267,6 +267,16 @@ export async function PATCH(
         break
       }
 
+      case 'SET_QUALIFY_COUNT': {
+        const count = payload?.count === 3 ? 3 : 2
+        let currentTS = getTournamentState(game)
+        if (currentTS) {
+          currentTS = { ...currentTS, qualifyCount: count }
+          await saveGameTournament(supabase, game.id, game.name, currentTS, currentTS.mode || 'KNOCKOUT')
+        }
+        break
+      }
+
       case 'SET_TOURNAMENT_PHASE': {
         let currentTS = getTournamentState(game)
         const { data: currentPlayers } = await supabase
