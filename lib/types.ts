@@ -47,6 +47,7 @@ export interface TournamentState {
   stage?: TournamentStage
   groupA?: GroupData
   groupB?: GroupData
+  readyPlayerIds?: string[]
 }
 
 export interface Game {

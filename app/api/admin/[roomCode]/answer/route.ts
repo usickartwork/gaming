@@ -141,7 +141,46 @@ export async function POST(
 
       return NextResponse.json({ ok: true, points, ...duelResult })
     } else {
-      // Wrong — next attempt, reset buzz to READY
+      // Wrong answer
+      // In KNOCKOUT BO3 duel: if player 1 answers wrong on attempt 1, immediately give turn to player 2!
+      const mode = getGameMode(game)
+      const ts = mode === 'KNOCKOUT' ? getTournamentState(game) : null
+      const activePhase = ts?.phase || ts?.stage
+
+      if (mode === 'KNOCKOUT' && activePhase === 'KNOCKOUT' && ts?.activeMatchId) {
+        const activeMatch = ts.matches.find((m) => m.id === ts.activeMatchId)
+        if (activeMatch && activeMatch.player1Id && activeMatch.player2Id) {
+          const wrongPlayerId = game.buzz_winner_id
+          const otherPlayerId =
+            wrongPlayerId === activeMatch.player1Id
+              ? activeMatch.player2Id
+              : wrongPlayerId === activeMatch.player2Id
+              ? activeMatch.player1Id
+              : null
+
+          // If this is attempt 1, immediately grant the answering turn to the opponent!
+          if (otherPlayerId && game.current_attempt === 1) {
+            const nextAttempt = 2
+            await supabase
+              .from('games')
+              .update({
+                buzz_state: 'LOCKED',
+                buzz_winner_id: otherPlayerId,
+                current_attempt: nextAttempt,
+              })
+              .eq('id', game.id)
+
+            return NextResponse.json({
+              ok: true,
+              points,
+              duelTurnPassed: true,
+              nextPlayerId: otherPlayerId,
+            })
+          }
+        }
+      }
+
+      // Default wrong flow: next attempt, reset buzz to READY
       const nextAttempt = game.current_attempt + 1
       await supabase
         .from('games')

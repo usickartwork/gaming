@@ -289,6 +289,7 @@ export function getTournamentState(game: { tournament_state?: TournamentState | 
       parsed.phase = parsed.matches?.length > 0 ? 'KNOCKOUT' : 'GROUP_A'
     }
     if (!parsed.targetPoints) parsed.targetPoints = 2
+    if (!parsed.readyPlayerIds) parsed.readyPlayerIds = []
   }
 
   return parsed
@@ -313,5 +314,52 @@ export function encodeGameStateName(currentName: string, state: TournamentState 
   const cleanName = getGameDisplayName(currentName)
   if (!state) return cleanName
   return `${cleanName}|||${JSON.stringify(state)}`
+}
+
+/**
+ * Helper to get ready player IDs from tournament state or empty array
+ */
+export function getReadyPlayerIds(state: TournamentState | null): string[] {
+  return state?.readyPlayerIds || []
+}
+
+/**
+ * Updates ready state for a player
+ */
+export function setPlayerReady(state: TournamentState | null, playerId: string, isReady: boolean): TournamentState {
+  const current: TournamentState = state || {
+    mode: 'CLASSIC',
+    phase: 'GROUP_A',
+    groupAPlayerIds: [],
+    groupBPlayerIds: [],
+    matches: [],
+    activeMatchId: null,
+    targetPoints: 2,
+    championId: null,
+    readyPlayerIds: [],
+  }
+
+  const existing = new Set(current.readyPlayerIds || [])
+  if (isReady) {
+    existing.add(playerId)
+  } else {
+    existing.delete(playerId)
+  }
+
+  return {
+    ...current,
+    readyPlayerIds: Array.from(existing),
+  }
+}
+
+/**
+ * Resets all players' ready state (e.g., when moving to next song or next match)
+ */
+export function resetReadyPlayers(state: TournamentState | null): TournamentState | null {
+  if (!state) return null
+  return {
+    ...state,
+    readyPlayerIds: [],
+  }
 }
 

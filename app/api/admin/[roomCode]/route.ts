@@ -105,6 +105,13 @@ export async function PATCH(
           .from('players')
           .update({ excluded_attempt: null })
           .eq('game_id', game.id)
+
+        // Reset ready state for the new song
+        const ts = getTournamentState(game)
+        if (ts && ts.readyPlayerIds && ts.readyPlayerIds.length > 0) {
+          const updatedTS = { ...ts, readyPlayerIds: [] }
+          await saveGameTournament(supabase, game.id, game.name, updatedTS, ts.mode || 'CLASSIC')
+        }
         break
       }
 
@@ -136,6 +143,20 @@ export async function PATCH(
           .from('players')
           .update({ excluded_attempt: null })
           .eq('game_id', game.id)
+
+        // Reset ready state for next song
+        const ts = getTournamentState(game)
+        if (ts && ts.readyPlayerIds && ts.readyPlayerIds.length > 0) {
+          const updatedTS = { ...ts, readyPlayerIds: [] }
+          await saveGameTournament(supabase, game.id, game.name, updatedTS, ts.mode || 'CLASSIC')
+        }
+        break
+      }
+
+      case 'RESET_READY': {
+        const ts = getTournamentState(game)
+        const updatedTS = { ...ts, readyPlayerIds: [] } as TournamentState
+        await saveGameTournament(supabase, game.id, game.name, updatedTS, ts?.mode || 'CLASSIC')
         break
       }
 

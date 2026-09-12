@@ -54,6 +54,52 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const prevBuzzStateRef = useRef(game.buzz_state)
   const prevAttemptRef = useRef(game.current_attempt)
   const lastWinnerPlayerRef = useRef<string | null>(null)
+  const serverOffsetRef = useRef<number>(0)
+
+  // Calibrate client-server clock offset to eliminate network latency advantage on buzzes
+  useEffect(() => {
+    const syncClock = async () => {
+      try {
+        const t0 = performance.now()
+        const res = await fetch('/api/games/ping', { cache: 'no-store' })
+        const data = await res.json()
+        const t1 = performance.now()
+        const rtt = t1 - t0
+        serverOffsetRef.current = data.serverTime - (Date.now() - Math.round(rtt / 2))
+      } catch {
+        // graceful ignore
+      }
+    }
+    syncClock()
+    const interval = setInterval(syncClock, 25000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Player readiness state
+  const readyPlayerIds = tournamentState?.readyPlayerIds || []
+  const isMeReady = readyPlayerIds.includes(session.playerId)
+  const readyCount = readyPlayerIds.length
+  const totalPlayers = players.length
+  const [isTogglingReady, setIsTogglingReady] = useState(false)
+
+  const handleToggleReady = async () => {
+    if (isTogglingReady) return
+    setIsTogglingReady(true)
+    try {
+      await fetch(`/api/games/${game.room_code}/ready`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-session-token': session.sessionToken,
+        },
+        body: JSON.stringify({ playerId: session.playerId, ready: !isMeReady }),
+      })
+    } catch (err) {
+      console.error('Toggle ready error:', err)
+    } finally {
+      setIsTogglingReady(false)
+    }
+  }
 
   // Track who was the active buzzing player before evaluate
   useEffect(() => {
@@ -191,6 +237,9 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (isBuzzing) return
     setIsBuzzing(true)
 
+    // Calculate calibrated press timestamp to eliminate latency discrepancies
+    const pressedAt = Date.now() + (serverOffsetRef.current || 0)
+
     try {
       const res = await fetch(`/api/admin/${game.room_code}/buzz`, {
         method: 'POST',
@@ -198,7 +247,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           'Content-Type': 'application/json',
           'x-session-token': session.sessionToken,
         },
-        body: JSON.stringify({ playerId: session.playerId }),
+        body: JSON.stringify({ playerId: session.playerId, pressedAt }),
       })
       const data = await res.json()
       if (data.winner) {
@@ -206,7 +255,8 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         playDingSound()
       } else if (data.winnerId) {
         setLocalWinner(false)
-        setLocalWinnerName(data.winnerName || 'Someone')
+        const matched = players.find((p) => p.id === data.winnerId)
+        setLocalWinnerName(data.winnerName || matched?.name || 'Pemain Lain')
       }
     } catch (err) {
       console.error('Buzz error:', err)
@@ -375,13 +425,17 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           </div>
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-2 shadow-lg shadow-emerald-400/30">
-              KAMU PALING CEPAT!
+              {gameMode === 'KNOCKOUT' && game.current_attempt > 1
+                ? 'GILIRAN BONUS (LAWAN SALAH)!'
+                : 'KAMU PALING CEPAT!'}
             </div>
             <h1 className="text-white text-4xl sm:text-5xl font-black tracking-tight leading-tight">
               GILIRAN KAMU!
             </h1>
             <p className="text-emerald-300 text-lg font-bold mt-1">
-              Sebutkan jawabanmu secara lisan sekarang!
+              {gameMode === 'KNOCKOUT' && game.current_attempt > 1
+                ? 'Lawan salah menjawab, langsung sebutkan jawabanmu sekarang!'
+                : 'Sebutkan jawabanmu secara lisan sekarang!'}
             </p>
           </div>
 
@@ -424,10 +478,12 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
               BUZZER TERKUNCI
             </span>
             <h1 className="text-white text-3xl font-black tracking-tight mt-3">
-              {localWinnerName || buzzWinnerPlayer?.name || 'Pemain Lain'}
+              {buzzWinnerPlayer?.name || localWinnerName || 'Pemain Lain'}
             </h1>
             <p className="text-slate-400 text-sm mt-1">
-              Memencet buzzer lebih dulu!
+              {gameMode === 'KNOCKOUT' && game.current_attempt > 1
+                ? 'Mendapat giliran menjawab langsung setelah percobaan pertama!'
+                : 'Memencet buzzer lebih dulu!'}
             </p>
           </div>
 
@@ -838,16 +894,72 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         </div>
       </div>
 
-      {/* Center: The Iconic Buzz Dome Button */}
-      <div className="my-auto py-8 flex items-center justify-center relative z-10">
-        <BuzzButton
-          buzzState={game.buzz_state}
-          isWinner={isWinner}
-          onBuzz={handleBuzz}
-          isExcluded={isExcluded}
-          isBuzzing={isBuzzing}
-        />
-      </div>
+      {/* Center: Ready Check Card when buzzer is disabled, or Buzz Dome Button when active */}
+      {game.buzz_state === 'DISABLED' ? (
+        <div className="my-auto py-6 flex flex-col items-center justify-center relative z-10 max-w-sm mx-auto w-full space-y-4">
+          <div className="w-full glass-panel rounded-3xl p-5 sm:p-6 border border-white/10 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
+              <CheckIcon size={28} />
+            </div>
+
+            <div>
+              <h3 className="text-white font-black text-xl tracking-tight">Kesiapan Pemain</h3>
+              <p className="text-slate-400 text-xs mt-1">
+                Tandai bahwa kamu sudah siap sebelum host memutar lagu!
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 p-2 rounded-xl bg-slate-900/60 border border-white/5">
+              <span className={`w-2.5 h-2.5 rounded-full ${isMeReady ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className="text-xs font-bold text-slate-300">
+                Pemain Siap: <strong className="text-emerald-400 font-mono font-black">{readyCount}</strong> / {totalPlayers}
+              </span>
+            </div>
+
+            {!isMeReady ? (
+              <button
+                type="button"
+                onClick={handleToggleReady}
+                disabled={isTogglingReady}
+                className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500 hover:brightness-110 text-slate-950 font-black text-base shadow-xl shadow-emerald-500/30 border-2 border-white/40 flex items-center justify-center gap-2.5 transition-all active:scale-95 animate-pulse"
+              >
+                <CheckIcon size={20} />
+                <span>SAYA SIAP BERMAIN!</span>
+              </button>
+            ) : (
+              <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 space-y-2">
+                <div className="flex items-center justify-center gap-2 text-emerald-300 font-black text-sm uppercase tracking-wider">
+                  <CheckIcon size={18} />
+                  <span>Kamu Sudah Siap!</span>
+                </div>
+                <p className="text-slate-400 text-xs">
+                  {readyCount >= totalPlayers
+                    ? 'Semua pemain sudah siap! Host akan segera memutar lagu.'
+                    : `Menunggu pemain lain (${readyCount}/${totalPlayers} siap)...`}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleToggleReady}
+                  disabled={isTogglingReady}
+                  className="text-xs text-slate-400 hover:text-slate-200 underline font-semibold transition-colors pt-1"
+                >
+                  Batal Siap
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="my-auto py-8 flex items-center justify-center relative z-10">
+          <BuzzButton
+            buzzState={game.buzz_state}
+            isWinner={isWinner}
+            onBuzz={handleBuzz}
+            isExcluded={isExcluded}
+            isBuzzing={isBuzzing}
+          />
+        </div>
+      )}
 
       {/* Bottom: Mini Podium Roster or Duel Opponent summary */}
       <div className="glass-panel rounded-3xl p-3.5 border border-white/10 relative z-10 space-y-2">
