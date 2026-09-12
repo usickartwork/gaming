@@ -1,143 +1,227 @@
-import type { Player, TournamentMatch, TournamentState } from './types'
+import type { Player, TournamentMatch, TournamentState, TournamentStage, GroupData } from './types'
 
 /**
- * Returns user-friendly Indonesian round names based on distance to the final.
+ * Creates default GroupData.
  */
-export function getRoundName(roundIndex: number, totalRounds: number): string {
-  const roundsFromFinal = totalRounds - 1 - roundIndex
-  if (roundsFromFinal === 0) return 'Grand Final'
-  if (roundsFromFinal === 1) return 'Semifinal'
-  if (roundsFromFinal === 2) return 'Perempat Final'
-  if (roundsFromFinal === 3) return 'Babak 16 Besar'
-  return `Babak ${roundIndex + 1}`
+export function createDefaultGroup(name: 'Grup A' | 'Grup B'): GroupData {
+  return {
+    name,
+    playerIds: [],
+    scores: {},
+    qualifiedPlayerIds: [],
+    status: 'UPCOMING',
+  }
 }
 
 /**
- * Generates a clean single-elimination bracket for any number of players (>= 2).
- * Handles odd numbers of players automatically with BYEs (free passes).
+ * Splits players randomly and evenly into Group A and Group B.
  */
-export function generateKnockoutBracket(
+export function shuffleTournamentGroups(
+  state: TournamentState | null,
   players: Player[],
   targetPoints: number = 2
 ): TournamentState {
-  if (players.length < 2) {
-    return {
-      mode: 'KNOCKOUT',
-      matches: [],
-      activeMatchId: null,
-      targetPoints,
-      championId: null,
-    }
-  }
-
-  // Shuffle players randomly for fair matchmaking
   const shuffled = [...players].sort(() => Math.random() - 0.5)
-  const n = shuffled.length
+  const groupAPlayerIds: string[] = []
+  const groupBPlayerIds: string[] = []
 
-  // Calculate bracket power of 2 (e.g. 4, 8, 16)
-  let bracketSize = 2
-  let totalRounds = 1
-  while (bracketSize < n) {
-    bracketSize *= 2
-    totalRounds++
-  }
-
-  const matches: TournamentMatch[] = []
-
-  // Create empty matches round by round from Round 0 up to Final
-  // For each round r, number of matches = bracketSize / 2^(r+1)
-  const roundMatchIds: string[][] = []
-
-  for (let r = 0; r < totalRounds; r++) {
-    const matchCount = bracketSize / Math.pow(2, r + 1)
-    roundMatchIds[r] = []
-    const roundName = getRoundName(r, totalRounds)
-
-    for (let m = 0; m < matchCount; m++) {
-      const matchId = `match-r${r}-m${m}`
-      roundMatchIds[r].push(matchId)
-      matches.push({
-        id: matchId,
-        roundIndex: r,
-        roundName,
-        matchIndex: m,
-        player1Id: null,
-        player2Id: null,
-        player1Score: 0,
-        player2Score: 0,
-        winnerId: null,
-        nextMatchId: null,
-        nextMatchSlot: null,
-        status: 'UPCOMING',
-      })
-    }
-  }
-
-  // Link child matches to their next match in round r+1
-  for (let r = 0; r < totalRounds - 1; r++) {
-    const currentRoundIds = roundMatchIds[r]
-    const nextRoundIds = roundMatchIds[r + 1]
-
-    currentRoundIds.forEach((mId, idx) => {
-      const parentMatchIndex = Math.floor(idx / 2)
-      const slot = (idx % 2 === 0 ? 1 : 2) as 1 | 2
-      const match = matches.find((m) => m.id === mId)
-      if (match) {
-        match.nextMatchId = nextRoundIds[parentMatchIndex]
-        match.nextMatchSlot = slot
-      }
-    })
-  }
-
-  // Seed players into Round 0
-  // Number of BYEs = bracketSize - n
-  const numByes = bracketSize - n
-  const round0Matches = matches.filter((m) => m.roundIndex === 0)
-
-  // Pairing strategy:
-  // Give top seeded spots to players with standard matches, and bottom spots can have BYEs
-  const slots: (string | null)[] = new Array(bracketSize).fill(null)
-  
-  // Assign players to slots
-  for (let i = 0; i < n; i++) {
-    slots[i] = shuffled[i].id
-  }
-
-  round0Matches.forEach((m, idx) => {
-    const p1 = slots[idx * 2]
-    const p2 = slots[idx * 2 + 1]
-    m.player1Id = p1
-    m.player2Id = p2
-
-    // If player 2 is null (a BYE), player 1 automatically advances!
-    if (p1 && !p2) {
-      m.winnerId = p1
-      m.status = 'FINISHED'
-      // Push p1 to next round
-      if (m.nextMatchId) {
-        const nextM = matches.find((nm) => nm.id === m.nextMatchId)
-        if (nextM) {
-          if (m.nextMatchSlot === 1) nextM.player1Id = p1
-          else nextM.player2Id = p1
-        }
-      }
+  shuffled.forEach((p, idx) => {
+    if (idx % 2 === 0) {
+      groupAPlayerIds.push(p.id)
+    } else {
+      groupBPlayerIds.push(p.id)
     }
   })
 
-  // Find first playable match that has 2 players
-  const firstPlayable = matches.find(
-    (m) => m.player1Id && m.player2Id && m.status === 'UPCOMING'
-  )
+  const groupA: GroupData = {
+    name: 'Grup A',
+    playerIds: groupAPlayerIds,
+    scores: {},
+    qualifiedPlayerIds: [],
+    status: 'UPCOMING',
+  }
 
-  if (firstPlayable) {
-    firstPlayable.status = 'ACTIVE'
+  const groupB: GroupData = {
+    name: 'Grup B',
+    playerIds: groupBPlayerIds,
+    scores: {},
+    qualifiedPlayerIds: [],
+    status: 'UPCOMING',
   }
 
   return {
     mode: 'KNOCKOUT',
+    stage: 'GROUPS_SETUP',
+    groupA,
+    groupB,
+    matches: [],
+    activeMatchId: null,
+    targetPoints: targetPoints || 2,
+    championId: null,
+  }
+}
+
+/**
+ * Initializes tournament state for players.
+ */
+export function initTournamentState(players: Player[], targetPoints: number = 2): TournamentState {
+  return shuffleTournamentGroups(null, players, targetPoints)
+}
+
+/**
+ * Starts stage for Group A or Group B.
+ */
+export function startGroupStage(
+  state: TournamentState,
+  groupKey: 'groupA' | 'groupB'
+): TournamentState {
+  const stage: TournamentStage = groupKey === 'groupA' ? 'GROUP_A' : 'GROUP_B'
+  return {
+    ...state,
+    stage,
+    [groupKey]: {
+      ...state[groupKey],
+      status: 'ACTIVE',
+    },
+  }
+}
+
+/**
+ * Records score for a player in the active group stage.
+ */
+export function recordGroupPoint(
+  state: TournamentState,
+  playerId: string,
+  points: number
+): TournamentState {
+  if (state.stage !== 'GROUP_A' && state.stage !== 'GROUP_B') {
+    return state
+  }
+
+  const groupKey = state.stage === 'GROUP_A' ? 'groupA' : 'groupB'
+  const group = state[groupKey]
+
+  const currentScore = group.scores[playerId] || 0
+  const updatedScores = {
+    ...group.scores,
+    [playerId]: Math.max(0, currentScore + points),
+  }
+
+  return {
+    ...state,
+    [groupKey]: {
+      ...group,
+      scores: updatedScores,
+    },
+  }
+}
+
+/**
+ * Finalizes a group stage:
+ * Sorts group players by score descending. Top 2 advance (`qualifiedPlayerIds`).
+ * If both groups are finished, automatically generates the BO3 Knockout matches (A1 vs B2, B1 vs A2)!
+ */
+export function finalizeGroupStage(
+  state: TournamentState,
+  groupKey: 'groupA' | 'groupB'
+): TournamentState {
+  const group = state[groupKey]
+  
+  // Sort players in this group by points descending
+  const sortedPlayerIds = [...group.playerIds].sort((a, b) => {
+    const scoreA = group.scores[a] || 0
+    const scoreB = group.scores[b] || 0
+    return scoreB - scoreA
+  })
+
+  // Top 2 advance
+  const qualified = sortedPlayerIds.slice(0, 2)
+
+  const updatedGroup: GroupData = {
+    ...group,
+    qualifiedPlayerIds: qualified,
+    status: 'FINISHED',
+  }
+
+  let nextState: TournamentState = {
+    ...state,
+    [groupKey]: updatedGroup,
+  }
+
+  const otherGroupKey = groupKey === 'groupA' ? 'groupB' : 'groupA'
+  const otherGroup = state[otherGroupKey]
+
+  // If both groups are finished, generate BO3 Knockout matches
+  if (otherGroup.status === 'FINISHED') {
+    nextState = generateKnockoutFromGroups(nextState)
+  }
+
+  return nextState
+}
+
+/**
+ * Generates the Semifinals and Grand Final (Best-of-3) from qualified players.
+ * Semifinal 1 (BO3): A1 (Winner Grup A) vs B2 (Runner-up Grup B)
+ * Semifinal 2 (BO3): B1 (Winner Grup B) vs A2 (Runner-up Grup A)
+ * Grand Final (BO3): Winner SF1 vs Winner SF2
+ */
+export function generateKnockoutFromGroups(state: TournamentState): TournamentState {
+  const a1 = state.groupA.qualifiedPlayerIds[0] || null
+  const a2 = state.groupA.qualifiedPlayerIds[1] || null
+  const b1 = state.groupB.qualifiedPlayerIds[0] || null
+  const b2 = state.groupB.qualifiedPlayerIds[1] || null
+
+  const matches: TournamentMatch[] = [
+    {
+      id: 'match-sf1',
+      roundIndex: 0,
+      roundName: 'Semifinal 1 (BO3)',
+      matchIndex: 0,
+      player1Id: a1,
+      player2Id: b2,
+      player1Score: 0,
+      player2Score: 0,
+      winnerId: null,
+      nextMatchId: 'match-final',
+      nextMatchSlot: 1,
+      status: 'ACTIVE', // start immediately with SF1
+    },
+    {
+      id: 'match-sf2',
+      roundIndex: 0,
+      roundName: 'Semifinal 2 (BO3)',
+      matchIndex: 1,
+      player1Id: b1,
+      player2Id: a2,
+      player1Score: 0,
+      player2Score: 0,
+      winnerId: null,
+      nextMatchId: 'match-final',
+      nextMatchSlot: 2,
+      status: 'UPCOMING',
+    },
+    {
+      id: 'match-final',
+      roundIndex: 1,
+      roundName: 'Grand Final (BO3)',
+      matchIndex: 0,
+      player1Id: null,
+      player2Id: null,
+      player1Score: 0,
+      player2Score: 0,
+      winnerId: null,
+      nextMatchId: null,
+      nextMatchSlot: null,
+      status: 'UPCOMING',
+    },
+  ]
+
+  return {
+    ...state,
+    stage: 'KNOCKOUT',
     matches,
-    activeMatchId: firstPlayable?.id ?? null,
-    targetPoints,
+    activeMatchId: 'match-sf1',
+    targetPoints: state.targetPoints || 2,
     championId: null,
   }
 }
@@ -196,6 +280,7 @@ export function advanceMatchWinner(
 
 /**
  * Records a duel point for a player in the active match.
+ * Target points = 2 for Best of 3 (BO3).
  * If the player reaches targetPoints, automatically advances the winner!
  */
 export function recordDuelPoint(
@@ -224,11 +309,13 @@ export function recordDuelPoint(
   match.player1Score = p1Score
   match.player2Score = p2Score
 
+  const target = state.targetPoints || 2
+
   // Check if player won the duel
-  if (p1Score >= state.targetPoints) {
+  if (p1Score >= target) {
     const advanced = advanceMatchWinner({ ...state, matches }, match.id, match.player1Id!)
     return { updatedState: advanced, matchWon: true, winnerId: match.player1Id }
-  } else if (p2Score >= state.targetPoints) {
+  } else if (p2Score >= target) {
     const advanced = advanceMatchWinner({ ...state, matches }, match.id, match.player2Id!)
     return { updatedState: advanced, matchWon: true, winnerId: match.player2Id }
   }
@@ -241,6 +328,16 @@ export function recordDuelPoint(
     matchWon: false,
     winnerId: null,
   }
+}
+
+/**
+ * Legacy single-elimination generator (preserved if needed).
+ */
+export function generateKnockoutBracket(
+  players: Player[],
+  targetPoints: number = 2
+): TournamentState {
+  return initTournamentState(players, targetPoints)
 }
 
 /**

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { getSupabaseServerClient } from '@/lib/supabase/server'
 import {
-  generateKnockoutBracket,
+  initTournamentState,
+  shuffleTournamentGroups,
+  startGroupStage,
+  finalizeGroupStage,
+  generateKnockoutFromGroups,
   advanceMatchWinner,
   getTournamentState,
   encodeGameStateName,
@@ -168,16 +172,72 @@ export async function PATCH(
       case 'SET_GAME_MODE': {
         const targetMode = payload?.mode === 'KNOCKOUT' ? 'KNOCKOUT' : 'CLASSIC'
         let currentTS = getTournamentState(game)
-        if (targetMode === 'KNOCKOUT' && (!currentTS || currentTS.matches.length === 0)) {
+        if (targetMode === 'KNOCKOUT' && (!currentTS || currentTS.groupA.playerIds.length === 0)) {
           const { data: currentPlayers } = await supabase
             .from('players')
             .select('*')
             .eq('game_id', game.id)
-          currentTS = generateKnockoutBracket(currentPlayers || [], 2)
+          currentTS = initTournamentState(currentPlayers || [], 2)
         } else if (currentTS) {
           currentTS = { ...currentTS, mode: targetMode }
         }
         await saveGameTournament(supabase, game.id, game.name, currentTS, targetMode)
+        break
+      }
+
+      case 'SHUFFLE_GROUPS': {
+        const { data: currentPlayers } = await supabase
+          .from('players')
+          .select('*')
+          .eq('game_id', game.id)
+        const targetPts = typeof payload?.targetPoints === 'number' ? payload.targetPoints : 2
+        const freshState = shuffleTournamentGroups(null, currentPlayers || [], targetPts)
+        await saveGameTournament(supabase, game.id, game.name, freshState, 'KNOCKOUT')
+        break
+      }
+
+      case 'START_GROUP_A': {
+        let currentTS = getTournamentState(game)
+        if (currentTS) {
+          currentTS = startGroupStage(currentTS, 'groupA')
+          await saveGameTournament(supabase, game.id, game.name, currentTS, 'KNOCKOUT')
+        }
+        break
+      }
+
+      case 'FINISH_GROUP_A': {
+        let currentTS = getTournamentState(game)
+        if (currentTS) {
+          currentTS = finalizeGroupStage(currentTS, 'groupA')
+          await saveGameTournament(supabase, game.id, game.name, currentTS, 'KNOCKOUT')
+        }
+        break
+      }
+
+      case 'START_GROUP_B': {
+        let currentTS = getTournamentState(game)
+        if (currentTS) {
+          currentTS = startGroupStage(currentTS, 'groupB')
+          await saveGameTournament(supabase, game.id, game.name, currentTS, 'KNOCKOUT')
+        }
+        break
+      }
+
+      case 'FINISH_GROUP_B': {
+        let currentTS = getTournamentState(game)
+        if (currentTS) {
+          currentTS = finalizeGroupStage(currentTS, 'groupB')
+          await saveGameTournament(supabase, game.id, game.name, currentTS, 'KNOCKOUT')
+        }
+        break
+      }
+
+      case 'START_KNOCKOUT': {
+        let currentTS = getTournamentState(game)
+        if (currentTS) {
+          currentTS = generateKnockoutFromGroups(currentTS)
+          await saveGameTournament(supabase, game.id, game.name, currentTS, 'KNOCKOUT')
+        }
         break
       }
 
@@ -187,7 +247,7 @@ export async function PATCH(
           .select('*')
           .eq('game_id', game.id)
         const targetPts = typeof payload?.targetPoints === 'number' ? payload.targetPoints : 2
-        const newBracket = generateKnockoutBracket(currentPlayers || [], targetPts)
+        const newBracket = shuffleTournamentGroups(null, currentPlayers || [], targetPts)
         await saveGameTournament(supabase, game.id, game.name, newBracket, 'KNOCKOUT')
         break
       }
@@ -222,8 +282,8 @@ export async function PATCH(
           .from('players')
           .select('*')
           .eq('game_id', game.id)
-        const freshBracket = generateKnockoutBracket(currentPlayers || [], 2)
-        await saveGameTournament(supabase, game.id, game.name, freshBracket, 'KNOCKOUT')
+        const freshState = shuffleTournamentGroups(null, currentPlayers || [], 2)
+        await saveGameTournament(supabase, game.id, game.name, freshState, 'KNOCKOUT')
         break
       }
 

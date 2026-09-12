@@ -8,7 +8,16 @@ export type RoundType = 'GUESS' | 'LYRICS'
 export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD'
 export type AttemptResult = 'CORRECT' | 'WRONG'
 export type GameMode = 'CLASSIC' | 'KNOCKOUT'
+export type TournamentStage = 'GROUPS_SETUP' | 'GROUP_A' | 'GROUP_B' | 'KNOCKOUT'
 export type TournamentMatchStatus = 'UPCOMING' | 'ACTIVE' | 'FINISHED'
+
+export interface GroupData {
+  name: 'Grup A' | 'Grup B'
+  playerIds: string[]
+  scores: Record<string, number>
+  qualifiedPlayerIds: string[]
+  status: 'UPCOMING' | 'ACTIVE' | 'FINISHED'
+}
 
 export interface TournamentMatch {
   id: string
@@ -27,6 +36,9 @@ export interface TournamentMatch {
 
 export interface TournamentState {
   mode: GameMode
+  stage: TournamentStage
+  groupA: GroupData
+  groupB: GroupData
   matches: TournamentMatch[]
   activeMatchId: string | null
   targetPoints: number

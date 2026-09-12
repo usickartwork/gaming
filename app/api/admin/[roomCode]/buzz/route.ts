@@ -50,16 +50,34 @@ export async function POST(
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     }
 
-    // Check if tournament mode restricts buzzing to the 2 active duelists
+    // Check if tournament mode restricts buzzing
     const mode = getGameMode(game)
     if (mode === 'KNOCKOUT') {
       const ts = getTournamentState(game)
-      const activeMatch = ts?.matches?.find((m) => m.id === ts.activeMatchId)
-      if (activeMatch && activeMatch.player1Id !== playerId && activeMatch.player2Id !== playerId) {
-        return NextResponse.json(
-          { error: 'Buzzer hanya untuk 2 pemain yang sedang bertanding di duel ini!' },
-          { status: 403 }
-        )
+      if (ts) {
+        if (ts.stage === 'GROUP_A') {
+          if (!ts.groupA.playerIds.includes(playerId)) {
+            return NextResponse.json(
+              { error: 'Buzzer saat ini hanya untuk anggota Grup A pada babak penyisihan ini!' },
+              { status: 403 }
+            )
+          }
+        } else if (ts.stage === 'GROUP_B') {
+          if (!ts.groupB.playerIds.includes(playerId)) {
+            return NextResponse.json(
+              { error: 'Buzzer saat ini hanya untuk anggota Grup B pada babak penyisihan ini!' },
+              { status: 403 }
+            )
+          }
+        } else if (ts.stage === 'KNOCKOUT') {
+          const activeMatch = ts.matches?.find((m) => m.id === ts.activeMatchId)
+          if (activeMatch && activeMatch.player1Id !== playerId && activeMatch.player2Id !== playerId) {
+            return NextResponse.json(
+              { error: 'Buzzer hanya untuk 2 pemain yang sedang bertanding di duel BO3 ini!' },
+              { status: 403 }
+            )
+          }
+        }
       }
     }
 
