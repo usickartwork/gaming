@@ -50,6 +50,7 @@ export function AudioPlayer({
   const [randomStart, setRandomStart] = useState(0)
   const [isFullPlay, setIsFullPlay] = useState(false)
   const [isTransferring, setIsTransferring] = useState(false)
+  const activeSongIdRef = useRef<string | null>(null)
 
   const calcRandomStart = useCallback((dur: number) => {
     if (!dur || dur <= 10) return 0
@@ -108,10 +109,29 @@ export function AudioPlayer({
         volume: 0.8,
       })
 
-      player.addListener('ready', ({ device_id }) => {
+      player.addListener('ready', async ({ device_id }) => {
         console.log('Spotify Web Player Ready with Device ID', device_id)
         setSpotifyDeviceId(device_id)
         setSpotifyError(null)
+
+        try {
+          const token = await fetchSpotifyToken()
+          if (token) {
+            await fetch('https://api.spotify.com/v1/me/player', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                device_ids: [device_id],
+                play: false,
+              }),
+            })
+          }
+        } catch (e) {
+          console.warn('Spotify device transfer warning:', e)
+        }
       })
 
       player.addListener('not_ready', ({ device_id }) => {
@@ -122,21 +142,26 @@ export function AudioPlayer({
       player.addListener('account_error', ({ message }) => {
         console.error('Spotify account error:', message)
         setSpotifyError('Akun Spotify kamu bukan Premium. Web Playback membutuhkan akun Spotify Premium.')
+        setPlaying(false)
       })
 
       player.addListener('authentication_error', ({ message }) => {
         console.error('Spotify authentication error:', message)
         setSpotifyConnected(false)
         setSpotifyError('Sesi Spotify berakhir. Silakan login ulang.')
+        setPlaying(false)
       })
 
       player.addListener('initialization_error', ({ message }) => {
         console.error('Spotify initialization error:', message)
         setSpotifyError('Browser memblokir pemutar musik atau tidak didukung.')
+        setPlaying(false)
       })
 
       player.addListener('playback_error', ({ message }) => {
         console.error('Spotify playback error:', message)
+        setSpotifyError(`Kendala pemutaran Spotify: ${message}`)
+        setPlaying(false)
       })
 
       player.addListener('player_state_changed', (state: SpotifyPlaybackState | null) => {
@@ -250,19 +275,20 @@ export function AudioPlayer({
     }
   }, [spotifyToken, fetchSpotifyToken])
 
-  // 5. Reset and forcefully stop audio when song changes or unselects (NEXT_SONG)
+  // 5. Reset and forcefully stop audio ONLY when song changes or unselects (NEXT_SONG)
   useEffect(() => {
-    setPlaying(false)
-    setCurrentTime(0)
-    setIsFullPlay(false)
+    const currentId = songId || null
+    if (activeSongIdRef.current !== currentId) {
+      activeSongIdRef.current = currentId
+      setPlaying(false)
+      setCurrentTime(0)
+      setIsFullPlay(false)
 
-    // Calculate an initial random start so the host sees it immediately
-    const initialStart = calcRandomStart(duration || 180)
-    setRandomStart(initialStart)
-
-    // Unconditionally stop any previous song from continuing to play
-    stopAudio()
-  }, [audioUrl, songId, calcRandomStart, stopAudio])
+      const initialStart = calcRandomStart(duration || 180)
+      setRandomStart(initialStart)
+      stopAudio()
+    }
+  }, [songId, calcRandomStart, stopAudio, duration])
 
   // 6. Auto-stop audio when player buzzes in
   useEffect(() => {
@@ -341,9 +367,26 @@ export function AudioPlayer({
         return
       }
 
+      // CRITICAL FOR MAC: Unlock audio element synchronously during user click
+      if (spotifyPlayerRef.current && typeof (spotifyPlayerRef.current as unknown as { activateElement?: () => Promise<void> }).activateElement === 'function') {
+        try {
+          await (spotifyPlayerRef.current as unknown as { activateElement: () => Promise<void> }).activateElement()
+        } catch (e) {
+          console.warn('activateElement warning:', e)
+        }
+      }
+
       setIsTransferring(true)
+      setSpotifyError(null)
+
       try {
         const token = spotifyToken || (await fetchSpotifyToken())
+        if (!token) {
+          setSpotifyError('Gagal mengambil token Spotify. Silakan klik Hubungkan Spotify.')
+          setPlaying(false)
+          return
+        }
+
         const startPos = !isFullPlay && currentTime === 0 && randomStart > 0 ? randomStart * 1000 : currentTime * 1000
 
         const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${spotifyDeviceId}`, {
@@ -354,18 +397,42 @@ export function AudioPlayer({
           },
           body: JSON.stringify({
             uris: [audioUrl],
-            position_ms: startPos,
+            position_ms: Math.floor(startPos),
           }),
         })
 
         if (!res.ok) {
-          // If already active or track paused, attempt resume
-          await spotifyPlayerRef.current?.resume()
+          const errData = await res.json().catch(() => null)
+          console.error('Spotify play failed:', res.status, errData)
+          const errorMsg = errData?.error?.message || ''
+          const errorReason = errData?.error?.reason || ''
+
+          if (res.status === 403 || errorReason === 'PREMIUM_REQUIRED') {
+            setSpotifyError('Akun Spotify kamu bukan akun Premium. Web Playback membutuhkan akun Spotify Premium.')
+          } else if (res.status === 401) {
+            setSpotifyError('Sesi Spotify telah kedaluwarsa. Silakan login ulang.')
+          } else if (res.status === 404) {
+            setSpotifyError('Perangkat Web Player belum terdaftar di Spotify. Coba klik PUTAR sekali lagi.')
+          } else {
+            // Attempt resume fallback
+            try {
+              await spotifyPlayerRef.current?.resume()
+              setPlaying(true)
+              return
+            } catch {
+              setSpotifyError(`Spotify Error (${res.status}): ${errorMsg || 'Gagal memutar lagu'}`)
+            }
+          }
+          setPlaying(false)
+          return
         }
 
         setPlaying(true)
-      } catch (err) {
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Kendala jaringan'
         console.error('Failed to play Spotify track:', err)
+        setSpotifyError(`Gagal menghubungi Spotify: ${message}`)
+        setPlaying(false)
       } finally {
         setIsTransferring(false)
       }
