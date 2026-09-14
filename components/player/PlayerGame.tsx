@@ -87,14 +87,27 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_winner_id, players])
 
+  const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
+
   // Real-time Sound & Visual Feedback for Correct vs Wrong answers
   useEffect(() => {
-    // When game transitions to RESULT (Answer evaluated as CORRECT!)
+    // When game transitions to RESULT
     if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
-      playCorrectFanfareSound()
-      setFeedbackAnim('correct')
-      const t = setTimeout(() => setFeedbackAnim('none'), 2500)
-      return () => clearTimeout(t)
+      if (tournamentState?.lastSongOutcome === 'ALL_WRONG') {
+        playWrongSound()
+        setFeedbackAnim('wrong')
+        const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
+        return () => clearTimeout(t)
+      } else {
+        playCorrectFanfareSound()
+        setFeedbackAnim('correct')
+        const t = setTimeout(() => setFeedbackAnim('none'), 2500)
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
+        return () => clearTimeout(t)
+      }
     }
 
     // When attempt increases after locked/answering state (Answer evaluated as WRONG!)
@@ -106,12 +119,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       playWrongSound()
       setFeedbackAnim('wrong')
       const t = setTimeout(() => setFeedbackAnim('none'), 2200)
+      prevBuzzStateRef.current = game.buzz_state
+      prevAttemptRef.current = game.current_attempt
       return () => clearTimeout(t)
     }
 
     prevBuzzStateRef.current = game.buzz_state
     prevAttemptRef.current = game.current_attempt
-  }, [game.buzz_state, game.current_attempt])
+  }, [game.buzz_state, game.current_attempt, tournamentState?.lastSongOutcome])
 
   // Fetch revealed song details when game enters RESULT state
   useEffect(() => {
@@ -542,25 +557,54 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         />
         <div className="w-full max-w-sm space-y-4 relative z-10 py-4">
           {/* Revealed Song Title & Artist Card */}
-          <div className="glass-panel rounded-3xl p-5 border border-emerald-500/40 bg-gradient-to-b from-emerald-950/60 via-slate-900 to-slate-950 shadow-2xl relative overflow-hidden text-center space-y-3">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
+          <div
+            className={`glass-panel rounded-3xl p-5 border shadow-2xl relative overflow-hidden text-center space-y-3 ${
+              isAllWrong
+                ? 'border-rose-500/40 bg-gradient-to-b from-rose-950/60 via-slate-900 to-slate-950'
+                : 'border-emerald-500/40 bg-gradient-to-b from-emerald-950/60 via-slate-900 to-slate-950'
+            }`}
+          >
+            <div
+              className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl pointer-events-none ${
+                isAllWrong ? 'bg-rose-500/15' : 'bg-emerald-500/15'
+              }`}
+            />
 
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-black text-[11px] uppercase tracking-wider">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-              <span>JAWABAN BENAR!</span>
-            </div>
+            {isAllWrong ? (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-300 font-black text-[11px] uppercase tracking-wider">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                <span>KESEMPATAN HABIS — TIDAK TERTEBAK</span>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-black text-[11px] uppercase tracking-wider">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span>JAWABAN BENAR!</span>
+              </div>
+            )}
 
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-400/30 flex items-center justify-center text-emerald-400 mx-auto shadow-lg shadow-emerald-500/20">
+            <div
+              className={`w-14 h-14 rounded-2xl border flex items-center justify-center mx-auto shadow-lg ${
+                isAllWrong
+                  ? 'bg-gradient-to-br from-rose-500/20 to-orange-500/10 border-rose-400/30 text-rose-400 shadow-rose-500/20'
+                  : 'bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border-emerald-400/30 text-emerald-400 shadow-emerald-500/20'
+              }`}
+            >
               <DiscIcon size={28} className="animate-spin" style={{ animationDuration: '4s' }} />
             </div>
 
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Judul Lagu</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                {isAllWrong ? 'Lagu Yang Dimainkan' : 'Judul Lagu'}
+              </p>
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-0.5 leading-tight">
-                {revealedSong?.title || (loadingSong ? 'Memuat Judul...' : 'Lagu Tertebak')}
+                {revealedSong?.title || (loadingSong ? 'Memuat Judul...' : isAllWrong ? 'Lagu Tidak Tertebak' : 'Lagu Tertebak')}
               </h1>
               {revealedSong?.artist && (
-                <p className="text-emerald-400 font-extrabold text-sm sm:text-base mt-1">
+                <p
+                  className={`font-extrabold text-sm sm:text-base mt-1 ${
+                    isAllWrong ? 'text-rose-300' : 'text-emerald-400'
+                  }`}
+                >
                   {revealedSong.artist}
                 </p>
               )}

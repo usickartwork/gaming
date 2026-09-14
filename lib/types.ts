@@ -57,6 +57,7 @@ export interface TournamentState {
   countdownEndTime?: number | null
   qualifyCount?: 2 | 3
   playlists?: PlaylistSection[]
+  lastSongOutcome?: 'CORRECT' | 'ALL_WRONG' | null
 }
 
 export interface Game {

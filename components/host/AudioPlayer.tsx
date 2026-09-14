@@ -23,6 +23,7 @@ interface AudioPlayerProps {
   shouldAutoPlay?: boolean
   onAutoPlayHandled?: () => void
   onStartCountdown?: () => void
+  lastSongOutcome?: 'CORRECT' | 'ALL_WRONG' | null
 }
 
 export function AudioPlayer({
@@ -32,6 +33,7 @@ export function AudioPlayer({
   buzzState,
   songId,
   roomCode,
+  lastSongOutcome,
 }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const isSpotifyTrack = Boolean(audioUrl && audioUrl.startsWith('spotify:track:'))
@@ -300,6 +302,11 @@ export function AudioPlayer({
   // 7. Auto-resume song when answer is CORRECT (buzzState === RESULT)
   useEffect(() => {
     if (buzzState === 'RESULT') {
+      if (lastSongOutcome === 'ALL_WRONG') {
+        stopAudio()
+        return
+      }
+
       setIsFullPlay(true)
 
       const timer = setTimeout(() => {
@@ -341,7 +348,7 @@ export function AudioPlayer({
 
       return () => clearTimeout(timer)
     }
-  }, [buzzState, isSpotifyTrack, randomStart, spotifyToken, spotifyDeviceId, fetchSpotifyToken])
+  }, [buzzState, lastSongOutcome, isSpotifyTrack, randomStart, spotifyToken, spotifyDeviceId, fetchSpotifyToken, stopAudio])
 
   // 8. Cleanup audio playback on component unmount
   useEffect(() => {
@@ -585,7 +592,7 @@ export function AudioPlayer({
       )}
 
       {/* Mode Banner: Song Resumes on Correct or Random Start indicator */}
-      {isFullPlay && buzzState === 'RESULT' ? (
+      {isFullPlay && buzzState === 'RESULT' && lastSongOutcome !== 'ALL_WRONG' ? (
         <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold relative z-10 shadow-lg shadow-emerald-500/10">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
@@ -593,6 +600,16 @@ export function AudioPlayer({
           </div>
           <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 bg-emerald-400/20 px-2.5 py-0.5 rounded-full border border-emerald-400/30">
             LANJUT MEMUTAR
+          </span>
+        </div>
+      ) : buzzState === 'RESULT' && lastSongOutcome === 'ALL_WRONG' ? (
+        <div className="flex items-center justify-between px-3.5 py-2 rounded-2xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-bold relative z-10 shadow-lg shadow-rose-500/10">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-rose-400" />
+            <span>Semua Pemain Salah! Lagu Dihentikan</span>
+          </div>
+          <span className="text-[10px] uppercase font-black tracking-wider text-rose-400 bg-rose-400/20 px-2.5 py-0.5 rounded-full border border-rose-400/30">
+            TIDAK TERTEBAK
           </span>
         </div>
       ) : (

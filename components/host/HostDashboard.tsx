@@ -72,6 +72,8 @@ export function HostDashboard({
   // ── Host API helper ──────────────────────────────────────────────
   const hostAction = useCallback(
     async (action: string, payload?: object) => {
+      // Broadcast immediately so players react in sub-30ms
+      broadcastHostAction(game.id, action, payload)
       setIsLoading(true)
       try {
         await fetch(`/api/admin/${game.room_code}`, {
@@ -82,7 +84,6 @@ export function HostDashboard({
           },
           body: JSON.stringify({ action, payload }),
         })
-        broadcastHostAction(game.id, action, payload)
       } finally {
         setIsLoading(false)
       }
@@ -499,12 +500,19 @@ export function HostDashboard({
   // Triggers ONLY after real-time update arrives from server and gives player screen a slight head-start (350ms)
   // so the player's phone animation has already appeared, completely eliminating audio spoilers.
   useEffect(() => {
-    // When answer is evaluated as CORRECT (game transitions to RESULT)
+    // When answer is evaluated as CORRECT or all failed (game transitions to RESULT)
     if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
+      const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
       const t = setTimeout(() => {
-        playCorrectFanfareSound()
-        setFeedbackAnim('correct')
-        setTimeout(() => setFeedbackAnim('none'), 2000)
+        if (isAllWrong) {
+          playWrongSound()
+          setFeedbackAnim('wrong')
+          setTimeout(() => setFeedbackAnim('none'), 1500)
+        } else {
+          playCorrectFanfareSound()
+          setFeedbackAnim('correct')
+          setTimeout(() => setFeedbackAnim('none'), 2000)
+        }
       }, 350)
       prevBuzzStateRef.current = game.buzz_state
       prevAttemptRef.current = game.current_attempt
@@ -529,10 +537,22 @@ export function HostDashboard({
 
     prevBuzzStateRef.current = game.buzz_state
     prevAttemptRef.current = game.current_attempt
-  }, [game.buzz_state, game.current_attempt])
+  }, [game.buzz_state, game.current_attempt, tournamentState?.lastSongOutcome])
 
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
+      // 1. Instant optimistic feedback & sub-30ms broadcast
+      broadcastHostAction(game.id, 'ANSWER_RESULT', { result })
+      if (result === 'CORRECT') {
+        playCorrectFanfareSound()
+        setFeedbackAnim('correct')
+        setTimeout(() => setFeedbackAnim('none'), 2000)
+      } else {
+        playWrongSound()
+        setFeedbackAnim('wrong')
+        setTimeout(() => setFeedbackAnim('none'), 1200)
+      }
+
       setIsLoading(true)
       try {
         await fetch(`/api/admin/${game.room_code}/answer`, {
@@ -547,7 +567,7 @@ export function HostDashboard({
         setIsLoading(false)
       }
     },
-    [game.room_code, hostSession.hostPassword]
+    [game.room_code, hostSession.hostPassword, game.id]
   )
 
   // ── Waiting Room ──────────────────────────────────────────────────
@@ -809,6 +829,7 @@ export function HostDashboard({
             buzzState={game.buzz_state}
             songId={effectiveSongId}
             roomCode={game.room_code}
+            lastSongOutcome={tournamentState?.lastSongOutcome}
           />
 
           {/* Buzzer Console (Status Buzzer HP ditaruh di bawah pemutar lagu) */}
@@ -826,11 +847,29 @@ export function HostDashboard({
 
           {/* Next Song Action Banner */}
           {game.buzz_state === 'RESULT' && (
-            <div className="glass-panel rounded-3xl p-5 border border-emerald-500/40 bg-emerald-500/10 shadow-lg shadow-emerald-950/40 flex items-center justify-between gap-4 animate-pulse">
+            <div
+              className={`glass-panel rounded-3xl p-5 border shadow-lg flex items-center justify-between gap-4 animate-pulse ${
+                tournamentState?.lastSongOutcome === 'ALL_WRONG'
+                  ? 'border-rose-500/40 bg-rose-500/10 shadow-rose-950/40'
+                  : 'border-emerald-500/40 bg-emerald-500/10 shadow-emerald-950/40'
+              }`}
+            >
               <div>
-                <p className="text-emerald-300 font-bold text-sm">Soal telah terjawab!</p>
+                <p
+                  className={`font-bold text-sm ${
+                    tournamentState?.lastSongOutcome === 'ALL_WRONG' ? 'text-rose-300' : 'text-emerald-300'
+                  }`}
+                >
+                  {tournamentState?.lastSongOutcome === 'ALL_WRONG'
+                    ? 'Kesempatan Menebak Habis!'
+                    : 'Soal telah terjawab!'}
+                </p>
                 <p className="text-slate-300 text-xs">
-                  {gameMode === 'KNOCKOUT' ? 'Poin duel telah diperbarui di bagan turnamen.' : 'Poin sudah masuk ke leaderboard.'}
+                  {tournamentState?.lastSongOutcome === 'ALL_WRONG'
+                    ? 'Semua pemain salah menebak lagu ini. Tidak ada pemain yang mendapat poin.'
+                    : gameMode === 'KNOCKOUT'
+                    ? 'Poin duel telah diperbarui di bagan turnamen.'
+                    : 'Poin sudah masuk ke leaderboard.'}
                 </p>
               </div>
               <button

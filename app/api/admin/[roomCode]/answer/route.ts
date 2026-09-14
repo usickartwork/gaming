@@ -7,7 +7,9 @@ import {
   getGameMode,
   getTournamentState,
   encodeGameStateName,
+  saveGameTournament,
 } from '@/lib/tournament-utils'
+import type { TournamentState } from '@/lib/types'
 
 /**
  * POST /api/admin/[roomCode]/answer
@@ -99,35 +101,33 @@ export async function POST(
       // Check if tournament mode score or duel should be updated
       const mode = getGameMode(game)
       let duelResult: { matchWon: boolean; winnerId: string | null } = { matchWon: false, winnerId: null }
-      if (mode === 'KNOCKOUT') {
-        const ts = getTournamentState(game)
-        if (ts) {
-          const activePhase = ts.phase || ts.stage
-          if (activePhase === 'KNOCKOUT' && ts.activeMatchId) {
-            const duelRes = recordDuelPoint(
-              ts,
-              ts.activeMatchId,
-              game.buzz_winner_id
-            )
-            const updatedState = duelRes.updatedState
-            duelResult = { matchWon: duelRes.matchWon, winnerId: duelRes.winnerId }
-            const encodedName = encodeGameStateName(game.name, updatedState)
-            await supabase
-              .from('games')
-              .update({ name: encodedName })
-              .eq('id', game.id)
+      let ts = getTournamentState(game) || ({
+        mode: 'CLASSIC',
+        phase: 'GROUP_A',
+        groupAPlayerIds: [],
+        groupBPlayerIds: [],
+        matches: [],
+        activeMatchId: null,
+        targetPoints: 2,
+        championId: null,
+      } as TournamentState)
 
-            try {
-              await supabase
-                .from('games')
-                .update({ tournament_state: updatedState })
-                .eq('id', game.id)
-            } catch {
-              // ignore if column does not exist
-            }
-          }
+      if (mode === 'KNOCKOUT') {
+        const activePhase = ts.phase || ts.stage
+        if (activePhase === 'KNOCKOUT' && ts.activeMatchId) {
+          const duelRes = recordDuelPoint(
+            ts,
+            ts.activeMatchId,
+            game.buzz_winner_id
+          )
+          ts = duelRes.updatedState
+          duelResult = { matchWon: duelRes.matchWon, winnerId: duelRes.winnerId }
         }
       }
+
+      // Mark that this song was answered correctly
+      ts.lastSongOutcome = 'CORRECT'
+      await saveGameTournament(supabase, game.id, game.name, ts, mode)
 
       // Song done — move to RESULT state, reset attempt counter
       await supabase
@@ -216,6 +216,21 @@ export async function POST(
       }
 
       if (!canStillBuzz) {
+        const mode = getGameMode(game)
+        const tsObj = getTournamentState(game) || ({
+          mode: 'CLASSIC',
+          phase: 'GROUP_A',
+          groupAPlayerIds: [],
+          groupBPlayerIds: [],
+          matches: [],
+          activeMatchId: null,
+          targetPoints: 2,
+          championId: null,
+        } as TournamentState)
+
+        tsObj.lastSongOutcome = 'ALL_WRONG'
+        await saveGameTournament(supabase, game.id, game.name, tsObj, mode)
+
         await supabase
           .from('games')
           .update({
@@ -229,7 +244,7 @@ export async function POST(
           .update({ excluded_attempt: null })
           .eq('game_id', game.id)
 
-        return NextResponse.json({ ok: true, points, songEnded: true })
+        return NextResponse.json({ ok: true, points, songEnded: true, allWrong: true })
       }
 
       // Default wrong flow: next attempt, reset buzz to READY

@@ -91,6 +91,23 @@ export function useGameState(gameId: string, initialGame: Game): Game {
                   next.buzz_winner_id = null
                   next.current_attempt = 1
                   break
+                case 'ANSWER_RESULT':
+                  if (msg.payload?.result === 'CORRECT') {
+                    next.buzz_state = 'RESULT'
+                    next.buzz_winner_id = null
+                    next.current_attempt = 1
+                  } else if (msg.payload?.result === 'WRONG') {
+                    if (msg.payload?.allWrong) {
+                      next.buzz_state = 'RESULT'
+                      next.buzz_winner_id = null
+                      next.current_attempt = 1
+                    } else {
+                      next.buzz_state = 'READY'
+                      next.buzz_winner_id = null
+                      next.current_attempt = (prev.current_attempt || 1) + 1
+                    }
+                  }
+                  break
               }
               return next
             })

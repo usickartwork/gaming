@@ -468,3 +468,29 @@ export function resetReadyPlayers(state: TournamentState | null): TournamentStat
   }
 }
 
+/**
+ * Encodes and saves tournament state into game record (both name column and tournament_state column)
+ */
+export async function saveGameTournament(
+  supabase: any,
+  gameId: string,
+  currentName: string,
+  state: TournamentState | null,
+  mode: 'CLASSIC' | 'KNOCKOUT'
+) {
+  const encodedName = encodeGameStateName(currentName, state)
+  await supabase
+    .from('games')
+    .update({ name: encodedName })
+    .eq('id', gameId)
+
+  try {
+    await supabase
+      .from('games')
+      .update({ game_mode: mode, tournament_state: state })
+      .eq('id', gameId)
+  } catch {
+    // Gracefully ignore if columns not in DB schema yet
+  }
+}
+
