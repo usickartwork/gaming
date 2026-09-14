@@ -52,10 +52,7 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
   }
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    triggerBuzz()
-  }
-
-  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
     triggerBuzz()
   }
 
@@ -114,7 +111,6 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
         <button
           type="button"
           onPointerDown={handlePointerDown}
-          onTouchStart={handleTouchStart}
           disabled={!canBuzz || isClaiming}
           className={`relative w-52 h-52 sm:w-60 sm:h-60 rounded-full font-black text-3xl tracking-widest select-none transition-all duration-75 flex flex-col items-center justify-center cursor-pointer active:scale-95 ${
             isClaiming

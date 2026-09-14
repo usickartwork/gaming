@@ -6,12 +6,21 @@ import type { Game } from '@/lib/types'
 
 /**
  * Broadcasts sub-50ms ultra-low latency WebSocket signals directly between Host and Players.
- * Bypasses database disk latency for instantaneous UI and audio reactions.
+ * Uses persistent subscribed channel and self:true for 100% reliable cross-device propagation.
  */
 export function broadcastFastBuzz(gameId: string, payload: Record<string, any>) {
   try {
     const supabase = getSupabaseBrowserClient()
-    const channel = supabase.channel(`game-state:${gameId}`)
+    const channels = supabase.getChannels()
+    const targetTopic = `realtime:game-state:${gameId}`
+    const existing = channels.find((ch: any) => ch.topic === targetTopic || ch.topic === `game-state:${gameId}`)
+
+    const channel =
+      existing ||
+      supabase.channel(`game-state:${gameId}`, {
+        config: { broadcast: { self: true, ack: false } },
+      })
+
     channel.send({
       type: 'broadcast',
       event: 'fast_buzz',
@@ -32,7 +41,8 @@ export function broadcastHostAction(gameId: string, action: string, payload?: Re
 
 /**
  * Subscribes to real-time changes on the games table for a specific game,
- * combining instant WebSocket broadcast events with persistent database changes.
+ * combining instant WebSocket broadcast events with persistent database changes
+ * and automatic sleep/wake resynchronization.
  */
 export function useGameState(gameId: string, initialGame: Game): Game {
   const [game, setGame] = useState<Game>(initialGame)
@@ -42,7 +52,11 @@ export function useGameState(gameId: string, initialGame: Game): Game {
     const supabase = getSupabaseBrowserClient()
 
     const channel = supabase
-      .channel(`game-state:${gameId}`)
+      .channel(`game-state:${gameId}`, {
+        config: {
+          broadcast: { self: true, ack: false },
+        },
+      })
       .on(
         'broadcast',
         { event: 'fast_buzz' },
@@ -101,10 +115,14 @@ export function useGameState(gameId: string, initialGame: Game): Game {
                       next.buzz_state = 'RESULT'
                       next.buzz_winner_id = null
                       next.current_attempt = 1
+                    } else if (msg.payload?.duelTurnPassed && msg.payload?.nextPlayerId) {
+                      next.buzz_state = 'LOCKED'
+                      next.buzz_winner_id = msg.payload.nextPlayerId
+                      next.current_attempt = 2
                     } else {
                       next.buzz_state = 'READY'
                       next.buzz_winner_id = null
-                      next.current_attempt = (prev.current_attempt || 1) + 1
+                      next.current_attempt = msg.payload?.nextAttempt || (prev.current_attempt || 1) + 1
                     }
                   }
                   break
@@ -142,10 +160,38 @@ export function useGameState(gameId: string, initialGame: Game): Game {
 
     channelRef.current = channel
 
+    // ── Resynchronize on Screen Unlock / Tab Refocus (Mobile Sleep & Wake) ──
+    const syncFreshSnapshot = async () => {
+      try {
+        const roomCode = initialGame.room_code
+        if (!roomCode) return
+        const res = await fetch(`/api/games/${roomCode}`, { cache: 'no-store' })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.game) {
+            setGame(data.game)
+          }
+        }
+      } catch {
+        // ignore network error during background sleep
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncFreshSnapshot()
+      }
+    }
+
+    window.addEventListener('focus', syncFreshSnapshot)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
     return () => {
+      window.removeEventListener('focus', syncFreshSnapshot)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       supabase.removeChannel(channel)
     }
-  }, [gameId])
+  }, [gameId, initialGame.room_code])
 
   return game
 }

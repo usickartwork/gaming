@@ -541,17 +541,20 @@ export function HostDashboard({
 
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
-      // 1. Instant optimistic feedback & sub-30ms broadcast
+      if (!game.buzz_winner_id || isLoading) return
       const currentBuzzWinner = players.find((p) => p.id === game.buzz_winner_id)
-      broadcastHostAction(game.id, 'ANSWER_RESULT', {
-        result,
-        winnerId: game.buzz_winner_id,
-        winnerName: currentBuzzWinner?.name || 'Pemain Lain',
-      })
+      const targetWinnerId = game.buzz_winner_id
+      const targetWinnerName = currentBuzzWinner?.name || 'Pemain Lain'
+
       if (result === 'CORRECT') {
         playCorrectFanfareSound()
         setFeedbackAnim('correct')
         setTimeout(() => setFeedbackAnim('none'), 2000)
+        broadcastHostAction(game.id, 'ANSWER_RESULT', {
+          result: 'CORRECT',
+          winnerId: targetWinnerId,
+          winnerName: targetWinnerName,
+        })
       } else {
         playWrongSound()
         setFeedbackAnim('wrong')
@@ -560,7 +563,7 @@ export function HostDashboard({
 
       setIsLoading(true)
       try {
-        await fetch(`/api/admin/${game.room_code}/answer`, {
+        const res = await fetch(`/api/admin/${game.room_code}/answer`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -568,11 +571,23 @@ export function HostDashboard({
           },
           body: JSON.stringify({ result }),
         })
+        const data = await res.json()
+        if (result === 'WRONG' && res.ok) {
+          broadcastHostAction(game.id, 'ANSWER_RESULT', {
+            result: 'WRONG',
+            allWrong: data.allWrong,
+            duelTurnPassed: data.duelTurnPassed,
+            nextPlayerId: data.nextPlayerId,
+            nextAttempt: data.nextAttempt,
+            winnerId: targetWinnerId,
+            winnerName: targetWinnerName,
+          })
+        }
       } finally {
         setIsLoading(false)
       }
     },
-    [game.room_code, hostSession.hostPassword, game.id]
+    [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, isLoading, players]
   )
 
   // ── Waiting Room ──────────────────────────────────────────────────

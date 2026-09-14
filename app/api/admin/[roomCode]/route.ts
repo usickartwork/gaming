@@ -109,7 +109,14 @@ export async function PATCH(
         // Reset ready state, countdown, and outcome for the new song
         const ts = getTournamentState(game)
         if (ts) {
-          const updatedTS = { ...ts, readyPlayerIds: [], countdownEndTime: null, lastSongOutcome: null }
+          const updatedTS = {
+            ...ts,
+            readyPlayerIds: [],
+            countdownEndTime: null,
+            lastSongOutcome: null,
+            lastWinnerId: null,
+            lastWinnerName: null,
+          }
           await saveGameTournament(supabase, game.id, game.name, updatedTS, ts.mode || 'CLASSIC')
         }
         break
@@ -147,7 +154,14 @@ export async function PATCH(
         // Reset ready state, countdown, and outcome for next song
         const ts = getTournamentState(game)
         if (ts) {
-          const updatedTS = { ...ts, readyPlayerIds: [], countdownEndTime: null, lastSongOutcome: null }
+          const updatedTS = {
+            ...ts,
+            readyPlayerIds: [],
+            countdownEndTime: null,
+            lastSongOutcome: null,
+            lastWinnerId: null,
+            lastWinnerName: null,
+          }
           await saveGameTournament(supabase, game.id, game.name, updatedTS, ts.mode || 'CLASSIC')
         }
         break

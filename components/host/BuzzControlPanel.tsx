@@ -90,8 +90,8 @@ export function BuzzControlPanel({
         </div>
       </div>
 
-      {/* First buzz spotlight */}
-      {buzzWinner ? (
+      {/* First buzz spotlight (Active answering & evaluation) */}
+      {buzzWinner && (buzzState === 'LOCKED' || buzzState === 'ANSWERING') ? (
         <div className="glass-panel rounded-3xl p-6 border border-rose-500/50 bg-gradient-to-b from-rose-950/40 via-slate-900/90 to-slate-900/90 shadow-2xl shadow-rose-950/50 space-y-4">
           <div className="flex items-center justify-between">
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 text-xs font-extrabold uppercase tracking-widest border border-rose-500/30 animate-pulse">
