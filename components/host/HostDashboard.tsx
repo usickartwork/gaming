@@ -249,7 +249,17 @@ export function HostDashboard({
     }
   }, [])
 
-  const currentSong = songList.find((s) => s.id === game.current_song_id) ?? null
+  const [optimisticSongId, setOptimisticSongId] = useState<string | null>(null)
+  const effectiveSongId = optimisticSongId ?? game.current_song_id
+
+  // Clear optimistic ID when realtime sync arrives
+  useEffect(() => {
+    if (optimisticSongId && game.current_song_id === optimisticSongId) {
+      setOptimisticSongId(null)
+    }
+  }, [game.current_song_id, optimisticSongId])
+
+  const currentSong = songList.find((s) => s.id === effectiveSongId) ?? null
   const buzzWinner = players.find((p) => p.id === game.buzz_winner_id) ?? null
 
   const handleSelectSpotifyTrack = async (track: { title: string; artist: string; uri: string }) => {
@@ -796,7 +806,7 @@ export function HostDashboard({
             songTitle={currentSong?.title ?? null}
             songArtist={currentSong?.artist ?? null}
             buzzState={game.buzz_state}
-            songId={game.current_song_id}
+            songId={effectiveSongId}
             roomCode={game.room_code}
           />
 
@@ -836,7 +846,7 @@ export function HostDashboard({
           {/* Tracklist Selector */}
           <SongSelector
             songs={songList}
-            currentSongId={game.current_song_id}
+            currentSongId={effectiveSongId}
             currentRound={game.current_round}
             playlists={playlists}
             activePlaylistId={activePlaylistId}
@@ -844,7 +854,10 @@ export function HostDashboard({
             onCreatePlaylist={handleCreatePlaylist}
             onDeletePlaylist={handleDeletePlaylist}
             onRenamePlaylist={handleRenamePlaylist}
-            onSelectSong={(song) => hostAction('SET_CURRENT_SONG', { songId: song.id })}
+            onSelectSong={(song) => {
+              setOptimisticSongId(song.id)
+              hostAction('SET_CURRENT_SONG', { songId: song.id })
+            }}
             onChangeRound={(round) => hostAction('SET_ROUND', { round })}
             onOpenSpotifySearch={handleOpenSpotifySearch}
             onDeleteSong={handleDeleteSong}

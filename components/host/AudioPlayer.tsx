@@ -380,6 +380,21 @@ export function AudioPlayer({
       setSpotifyError(null)
 
       try {
+        // Fast path: If the player already has this track loaded and paused, resume immediately (50ms)
+        if (spotifyPlayerRef.current && currentTime > 0) {
+          try {
+            const state = await spotifyPlayerRef.current.getCurrentState()
+            if (state && state.track_window?.current_track?.uri === audioUrl && state.paused) {
+              await spotifyPlayerRef.current.resume()
+              setPlaying(true)
+              setIsTransferring(false)
+              return
+            }
+          } catch {
+            // fall back to full play API
+          }
+        }
+
         const token = spotifyToken || (await fetchSpotifyToken())
         if (!token) {
           setSpotifyError('Gagal mengambil token Spotify. Silakan klik Hubungkan Spotify.')
