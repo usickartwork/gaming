@@ -102,14 +102,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         if (tournamentState?.lastSongOutcome === 'ALL_WRONG') {
           playWrongSound()
           setFeedbackAnim('wrong')
-          const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+          const t = setTimeout(() => setFeedbackAnim('none'), 1500)
           prevBuzzStateRef.current = game.buzz_state
           prevAttemptRef.current = game.current_attempt
           return () => clearTimeout(t)
         } else {
           playCorrectFanfareSound()
           setFeedbackAnim('correct')
-          const t = setTimeout(() => setFeedbackAnim('none'), 2500)
+          const t = setTimeout(() => setFeedbackAnim('none'), 1500)
           prevBuzzStateRef.current = game.buzz_state
           prevAttemptRef.current = game.current_attempt
           return () => clearTimeout(t)
@@ -128,7 +128,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         lastWrongFeedbackTimeRef.current = now
         playWrongSound()
         setFeedbackAnim('wrong')
-        const t = setTimeout(() => setFeedbackAnim('none'), 2200)
+        const t = setTimeout(() => setFeedbackAnim('none'), 1500)
         prevBuzzStateRef.current = game.buzz_state
         prevAttemptRef.current = game.current_attempt
         return () => clearTimeout(t)
@@ -305,7 +305,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
     if (feedbackAnim === 'correct') {
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none pointer-events-none">
+        <div
+          onClick={() => setFeedbackAnim('none')}
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none cursor-pointer"
+        >
           <div className="flex flex-col items-center text-center space-y-4 max-w-xs animate-pop-in">
             {/* Glowing Emerald Dome & Sparkles */}
             <div className="relative">
@@ -334,6 +337,9 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
                   ? (gameMode === 'KNOCKOUT' ? '+1 Poin Duel masuk ke skormu!' : 'Hebat! Poin bertambah ke skormu!')
                   : `${winnerName} berhasil menebak lagu ini!`}
               </p>
+              <span className="text-[11px] text-slate-400/80 font-medium block pt-1">
+                (Ketuk layar untuk langsung melihat skor)
+              </span>
             </div>
           </div>
         </div>
@@ -343,7 +349,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (feedbackAnim === 'wrong') {
       const iWasWrong = isExcluded || (isMe && prevBuzzStateRef.current === 'LOCKED')
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none pointer-events-none">
+        <div
+          onClick={() => setFeedbackAnim('none')}
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none cursor-pointer"
+        >
           <div className="flex flex-col items-center text-center space-y-4 max-w-xs animate-shake">
             {/* Glowing Red Rose Dome */}
             <div className="relative">
@@ -557,7 +566,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   // ── RESULT state ────────────────────────────────────────────────
   if (game.buzz_state === 'RESULT') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 relative overflow-hidden">
+      <div className="min-h-screen flex flex-col items-center justify-start p-4 sm:p-6 relative overflow-y-auto">
         {renderFeedbackOverlay()}
         <TournamentBracketModal
           isOpen={showBracketModal}
@@ -566,107 +575,92 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           players={players}
           currentPlayerId={session.playerId}
         />
-        <div className="w-full max-w-sm space-y-4 relative z-10 py-4">
-          {/* Revealed Song Title & Artist Card */}
+        <div className="w-full max-w-sm space-y-3 relative z-10 py-2">
+          {/* Revealed Song Title & Artist Header (Compact & Clean) */}
           <div
-            className={`glass-panel rounded-3xl p-5 border shadow-2xl relative overflow-hidden text-center space-y-3 ${
+            className={`glass-panel rounded-2xl p-3 border shadow-xl flex items-center gap-3 relative overflow-hidden ${
               isAllWrong
-                ? 'border-rose-500/40 bg-gradient-to-b from-rose-950/60 via-slate-900 to-slate-950'
-                : 'border-emerald-500/40 bg-gradient-to-b from-emerald-950/60 via-slate-900 to-slate-950'
+                ? 'border-rose-500/40 bg-gradient-to-r from-rose-950/70 via-slate-900 to-slate-950'
+                : 'border-emerald-500/40 bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-950'
             }`}
           >
             <div
-              className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl pointer-events-none ${
-                isAllWrong ? 'bg-rose-500/15' : 'bg-emerald-500/15'
-              }`}
-            />
-
-            {isAllWrong ? (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-300 font-black text-[11px] uppercase tracking-wider">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                <span>KESEMPATAN HABIS — TIDAK TERTEBAK</span>
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-black text-[11px] uppercase tracking-wider">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                <span>JAWABAN BENAR!</span>
-              </div>
-            )}
-
-            <div
-              className={`w-14 h-14 rounded-2xl border flex items-center justify-center mx-auto shadow-lg ${
+              className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 shadow-md ${
                 isAllWrong
-                  ? 'bg-gradient-to-br from-rose-500/20 to-orange-500/10 border-rose-400/30 text-rose-400 shadow-rose-500/20'
-                  : 'bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border-emerald-400/30 text-emerald-400 shadow-emerald-500/20'
+                  ? 'bg-rose-500/20 border-rose-400/30 text-rose-400'
+                  : 'bg-emerald-500/20 border-emerald-400/30 text-emerald-400'
               }`}
             >
-              <DiscIcon size={28} className="animate-spin" style={{ animationDuration: '4s' }} />
+              <DiscIcon size={22} className="animate-spin" style={{ animationDuration: '4s' }} />
             </div>
 
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                {isAllWrong ? 'Lagu Yang Dimainkan' : 'Judul Lagu'}
-              </p>
-              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight mt-0.5 leading-tight">
-                {revealedSong?.title || (loadingSong ? 'Memuat Judul...' : isAllWrong ? 'Lagu Tidak Tertebak' : 'Lagu Tertebak')}
-              </h1>
-              {revealedSong?.artist && (
-                <p
-                  className={`font-extrabold text-sm sm:text-base mt-1 ${
-                    isAllWrong ? 'text-rose-300' : 'text-emerald-400'
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span
+                  className={`inline-block px-2 py-0.5 rounded-full font-black text-[9px] uppercase tracking-wider ${
+                    isAllWrong
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                   }`}
                 >
+                  {isAllWrong ? 'TIDAK TERTEBAK' : 'LAGU TERTEBAK'}
+                </span>
+              </div>
+              <h2 className="text-white font-black text-sm sm:text-base truncate leading-tight">
+                {revealedSong?.title || (loadingSong ? 'Memuat Judul...' : isAllWrong ? 'Lagu Tidak Tertebak' : 'Lagu Tertebak')}
+              </h2>
+              {revealedSong?.artist && (
+                <p className="text-slate-400 font-semibold text-xs truncate">
                   {revealedSong.artist}
                 </p>
               )}
             </div>
           </div>
 
-          {/* Tournament Knockout summary or Classic Leaderboard */}
-          {gameMode === 'KNOCKOUT' ? (
-            <div className="glass-panel rounded-3xl p-5 border border-amber-500/30 bg-amber-950/20 shadow-2xl text-center space-y-3">
-              <div className="flex items-center justify-center gap-2 text-amber-400">
-                <SwordsIcon size={20} />
-                <span className="text-xs font-black uppercase tracking-wider">Status Duel 1v1</span>
+          {/* Tournament Knockout duel summary (if Knockout mode) */}
+          {gameMode === 'KNOCKOUT' && activeMatch && (
+            <div className="glass-panel rounded-2xl p-2.5 border border-amber-500/30 bg-amber-950/20 shadow-lg flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-slate-400 text-[9px] uppercase font-bold">{activeMatch.roundName}</p>
+                <p className="text-xs font-black text-white truncate mt-0.5">
+                  {players.find((p) => p.id === activeMatch.player1Id)?.name ?? 'P1'} ({activeMatch.player1Score})
+                  {' VS '}
+                  {players.find((p) => p.id === activeMatch.player2Id)?.name ?? 'P2'} ({activeMatch.player2Score})
+                </p>
               </div>
-
-              {activeMatch && (
-                <div className="p-3 bg-slate-900/90 rounded-2xl border border-white/10 text-xs font-bold text-slate-200">
-                  <p className="text-slate-400 text-[10px] uppercase">{activeMatch.roundName}</p>
-                  <p className="text-base font-black text-white mt-1">
-                    {players.find((p) => p.id === activeMatch.player1Id)?.name ?? 'P1'} ({activeMatch.player1Score})
-                    {' VS '}
-                    {players.find((p) => p.id === activeMatch.player2Id)?.name ?? 'P2'} ({activeMatch.player2Score})
-                  </p>
-                  <p className="text-[10px] text-amber-400 mt-1">Target Menang: {tournamentState?.targetPoints ?? 2} Poin</p>
-                </div>
-              )}
-
               <button
                 type="button"
                 onClick={() => setShowBracketModal(true)}
-                className="w-full py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-amber-400/20"
+                className="px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[10px] shrink-0 flex items-center gap-1 transition-all active:scale-95 shadow-md shadow-amber-400/20"
               >
-                <SwordsIcon size={14} />
-                <span>Lihat Bagan Turnamen Lengkap</span>
+                <SwordsIcon size={12} />
+                <span>Bagan Turnamen</span>
               </button>
             </div>
-          ) : (
-            <>
-              <div className="text-center pt-2">
-                <TrophyIcon size={28} className="text-amber-400 mx-auto mb-1" />
-                <h2 className="text-white text-lg font-black tracking-tight">KLASEMEN SKOR SEMENTARA</h2>
-                <p className="text-slate-400 text-xs">Ronde {game.current_round === 'GUESS' ? '1' : '2'}</p>
-              </div>
-
-              <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl">
-                <Leaderboard players={players} highlightId={session.playerId} />
-              </div>
-            </>
           )}
 
-          <div className="text-center py-1">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 border border-white/10 text-slate-400 text-xs animate-pulse">
+          {/* Klasemen Sementara (Langsung Tampil Paling Depan!) */}
+          <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <TrophyIcon size={16} className="text-amber-400" />
+                <h3 className="text-white text-xs font-black tracking-wider uppercase">
+                  Klasemen Skor Sementara
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold text-slate-400 bg-white/5 px-2 py-0.5 rounded-full border border-white/10">
+                Ronde {game.current_round === 'GUESS' ? '1' : '2'}
+              </span>
+            </div>
+
+            <div className="max-h-64 sm:max-h-72 overflow-y-auto pr-0.5">
+              <Leaderboard players={players} highlightId={session.playerId} />
+            </div>
+          </div>
+
+          {/* Menunggu Host Banner */}
+          <div className="text-center pt-1 pb-2">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-white/10 text-slate-400 text-[11px] animate-pulse">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
               Menunggu Host Memutar Lagu Selanjutnya...
             </div>
