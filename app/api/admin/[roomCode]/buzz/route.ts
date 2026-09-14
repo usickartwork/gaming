@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseServerClient } from '@/lib/supabase/server'
 import { getGameMode, getTournamentState } from '@/lib/tournament-utils'
+import { arbitrateBuzz, Candidate } from '@/lib/buzzer-arbitrator'
+
+export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/admin/[roomCode]/buzz
- * Ultra-responsive atomic buzzer endpoint.
- * Evaluates session, checks exclusions, and executes atomic PostgreSQL lock in <50ms.
+ * Latency-neutral, 100% fair buzzer endpoint.
+ * Arbitrates competing buzzes based on calibrated physical touch timestamps (pressedAt)
+ * rather than arbitrary network packet arrival speed.
  */
 export async function POST(
   req: NextRequest,
@@ -15,8 +19,8 @@ export async function POST(
     const { roomCode } = await params
     const normalizedRoom = roomCode.toUpperCase()
     const sessionToken = req.headers.get('x-session-token')
-    const body = await req.json()
-    const { playerId } = body
+    const body = await req.json().catch(() => ({}))
+    const { playerId, pressedAt } = body
 
     if (!sessionToken || !playerId) {
       return NextResponse.json({ error: 'Missing credentials' }, { status: 400 })
@@ -50,7 +54,7 @@ export async function POST(
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     }
 
-    // Check if tournament mode restricts buzzing
+    // Check if tournament knockout mode restricts buzzing
     const mode = getGameMode(game)
     if (mode === 'KNOCKOUT') {
       const ts = getTournamentState(game)
@@ -88,7 +92,7 @@ export async function POST(
     }
 
     // ── STRICT EXCLUSION CHECK ───────────────────────────────────────
-    // If player answered wrong on this song, they are NOT permitted to buzz again!
+    // If player answered wrong on this song, they are NOT permitted to buzz again
     if (player.excluded_attempt !== null) {
       return NextResponse.json(
         { error: 'Anda sudah menjawab salah untuk lagu ini.' },
@@ -96,8 +100,8 @@ export async function POST(
       )
     }
 
-    // If game is already locked or not READY, return the existing winner immediately
-    if (game.buzz_state !== 'READY' || game.buzz_winner_id !== null) {
+    // If buzzer is already LOCKED or not READY, return the existing winner immediately
+    if (game.buzz_state !== 'READY') {
       let currentWinnerName = 'Pemain Lain'
       const existingWinnerId = game.buzz_winner_id
 
@@ -124,57 +128,75 @@ export async function POST(
       })
     }
 
-    // ── ATOMIC FAST CLAIM IN POSTGRESQL (ZERO ARTIFICIAL DELAYS) ─────
-    const { data: claimedGame } = await supabase
-      .from('games')
-      .update({
-        buzz_winner_id: playerId,
-        buzz_state: 'LOCKED',
-      })
-      .eq('id', game.id)
-      .eq('buzz_state', 'READY')
-      .is('buzz_winner_id', null)
-      .select('id, buzz_winner_id')
-      .maybeSingle()
-
-    if (claimedGame?.buzz_winner_id === playerId) {
-      return NextResponse.json({
-        winner: true,
-        winnerId: playerId,
-        winnerName: player.name,
-      })
+    // Sanitize and validate physical press timestamp (prevents client spoofing)
+    const now = Date.now()
+    let calibratedPressedAt = typeof pressedAt === 'number' && !isNaN(pressedAt) ? pressedAt : now
+    if (calibratedPressedAt > now + 80) {
+      calibratedPressedAt = now // clamp future timestamps
+    }
+    if (calibratedPressedAt < now - 3500) {
+      calibratedPressedAt = now - 3500 // clamp absurd past timestamps
     }
 
-    // If another contestant claimed it first in the database, fetch winner details
-    const { data: freshGame } = await supabase
-      .from('games')
-      .select('buzz_winner_id')
-      .eq('id', game.id)
-      .single()
+    const candidate: Candidate = {
+      playerId,
+      playerName: player.name,
+      pressedAt: calibratedPressedAt,
+      receivedAt: now,
+    }
 
-    const winnerId = freshGame?.buzz_winner_id || game.buzz_winner_id
-    let winnerName = 'Pemain Lain'
+    // ── LATENCY-FAIR ARBITRATION ────────────────────────────────────
+    // Arbitrates all competing buzzes arriving within a brief 220ms window.
+    // The candidate with the earliest physical touch (pressedAt) wins!
+    const result = await arbitrateBuzz(
+      game.id,
+      game.current_attempt || 1,
+      candidate,
+      async (winnerCandidate, allCandidates) => {
+        // Check if database was already finalized by another process
+        const { data: freshGame } = await supabase
+          .from('games')
+          .select('buzz_state, buzz_winner_id')
+          .eq('id', game.id)
+          .single()
 
-    if (winnerId) {
-      if (winnerId === playerId) {
-        return NextResponse.json({
-          winner: true,
-          winnerId: playerId,
-          winnerName: player.name,
-        })
+        if (freshGame && freshGame.buzz_state === 'LOCKED' && freshGame.buzz_winner_id) {
+          const match = allCandidates.find((c) => c.playerId === freshGame.buzz_winner_id)
+          let finalWinnerName = match?.playerName || 'Pemain Lain'
+          if (!match) {
+            const { data: p } = await supabase
+              .from('players')
+              .select('name')
+              .eq('id', freshGame.buzz_winner_id)
+              .single()
+            if (p?.name) finalWinnerName = p.name
+          }
+          return { winnerId: freshGame.buzz_winner_id, winnerName: finalWinnerName }
+        }
+
+        // Atomically lock the true physical winner into PostgreSQL
+        await supabase
+          .from('games')
+          .update({
+            buzz_winner_id: winnerCandidate.playerId,
+            buzz_state: 'LOCKED',
+          })
+          .eq('id', game.id)
+          .eq('buzz_state', 'READY')
+
+        return {
+          winnerId: winnerCandidate.playerId,
+          winnerName: winnerCandidate.playerName,
+        }
       }
-      const { data: wp } = await supabase
-        .from('players')
-        .select('name')
-        .eq('id', winnerId)
-        .single()
-      if (wp?.name) winnerName = wp.name
-    }
+    )
+
+    const isWinner = result.winnerId === playerId
 
     return NextResponse.json({
-      winner: false,
-      winnerId: winnerId || null,
-      winnerName,
+      winner: isWinner,
+      winnerId: result.winnerId,
+      winnerName: result.winnerName,
     })
   } catch (err) {
     console.error('POST /api/admin/[roomCode]/buzz error:', err)
