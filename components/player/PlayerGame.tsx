@@ -77,22 +77,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     // When game transitions to RESULT
     if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
       const now = Date.now()
-      if (now - lastResultFeedbackTimeRef.current > 3000) {
+      if (now - lastResultFeedbackTimeRef.current > 2000) {
         lastResultFeedbackTimeRef.current = now
         if (tournamentState?.lastSongOutcome === 'ALL_WRONG') {
           playWrongSound()
           setFeedbackAnim('wrong')
-          const t = setTimeout(() => setFeedbackAnim('none'), 2000)
-          prevBuzzStateRef.current = game.buzz_state
-          prevAttemptRef.current = game.current_attempt
-          return () => clearTimeout(t)
         } else {
           playCorrectFanfareSound()
           setFeedbackAnim('correct')
-          const t = setTimeout(() => setFeedbackAnim('none'), 2500)
-          prevBuzzStateRef.current = game.buzz_state
-          prevAttemptRef.current = game.current_attempt
-          return () => clearTimeout(t)
         }
       }
     }
@@ -104,20 +96,33 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       game.current_attempt > prevAttemptRef.current
     ) {
       const now = Date.now()
-      if (now - lastWrongFeedbackTimeRef.current > 2000) {
+      if (now - lastWrongFeedbackTimeRef.current > 1500) {
         lastWrongFeedbackTimeRef.current = now
         playWrongSound()
         setFeedbackAnim('wrong')
-        const t = setTimeout(() => setFeedbackAnim('none'), 2000)
-        prevBuzzStateRef.current = game.buzz_state
-        prevAttemptRef.current = game.current_attempt
-        return () => clearTimeout(t)
+      }
+    }
+
+    // Close any popup when round resets to READY or DISABLED
+    if (game.buzz_state === 'READY' || game.buzz_state === 'DISABLED') {
+      if (prevBuzzStateRef.current === 'RESULT') {
+        setFeedbackAnim('none')
       }
     }
 
     prevBuzzStateRef.current = game.buzz_state
     prevAttemptRef.current = game.current_attempt
   }, [game.buzz_state, game.current_attempt, tournamentState?.lastSongOutcome])
+
+  // Dedicated Auto-Dismiss Timer: guarantees popup overlay always disappears (never stuck!)
+  useEffect(() => {
+    if (feedbackAnim === 'none') return
+    const duration = feedbackAnim === 'correct' ? 1800 : 1200
+    const timer = setTimeout(() => {
+      setFeedbackAnim('none')
+    }, duration)
+    return () => clearTimeout(timer)
+  }, [feedbackAnim])
 
   // Fetch revealed song details when game enters RESULT state
   useEffect(() => {
