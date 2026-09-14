@@ -546,15 +546,11 @@ export function HostDashboard({
       const targetWinnerId = game.buzz_winner_id
       const targetWinnerName = currentBuzzWinner?.name || 'Pemain Lain'
 
+      // Play sound immediately for host responsiveness (visual-only, doesn't block)
       if (result === 'CORRECT') {
         playCorrectFanfareSound()
         setFeedbackAnim('correct')
         setTimeout(() => setFeedbackAnim('none'), 2000)
-        broadcastHostAction(game.id, 'ANSWER_RESULT', {
-          result: 'CORRECT',
-          winnerId: targetWinnerId,
-          winnerName: targetWinnerName,
-        })
       } else {
         playWrongSound()
         setFeedbackAnim('wrong')
@@ -572,7 +568,16 @@ export function HostDashboard({
           body: JSON.stringify({ result }),
         })
         const data = await res.json()
-        if (result === 'WRONG' && res.ok) {
+        if (!res.ok) return
+
+        // Broadcast AFTER API has committed to DB — ensures no race condition
+        if (result === 'CORRECT') {
+          broadcastHostAction(game.id, 'ANSWER_RESULT', {
+            result: 'CORRECT',
+            winnerId: targetWinnerId,
+            winnerName: targetWinnerName,
+          })
+        } else {
           broadcastHostAction(game.id, 'ANSWER_RESULT', {
             result: 'WRONG',
             allWrong: data.allWrong,

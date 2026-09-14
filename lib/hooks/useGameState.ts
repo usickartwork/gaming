@@ -6,26 +6,32 @@ import type { Game } from '@/lib/types'
 
 /**
  * Broadcasts sub-50ms ultra-low latency WebSocket signals directly between Host and Players.
- * Uses persistent subscribed channel and self:true for 100% reliable cross-device propagation.
+ * Prefers the already-subscribed channel so the broadcast is never silently dropped.
  */
 export function broadcastFastBuzz(gameId: string, payload: Record<string, any>) {
   try {
     const supabase = getSupabaseBrowserClient()
     const channels = supabase.getChannels()
-    const targetTopic = `realtime:game-state:${gameId}`
-    const existing = channels.find((ch: any) => ch.topic === targetTopic || ch.topic === `game-state:${gameId}`)
+    // Supabase internally prefixes topic with 'realtime:'
+    const existing = channels.find(
+      (ch: any) =>
+        ch.topic === `realtime:game-state:${gameId}` ||
+        ch.topic === `game-state:${gameId}`
+    )
 
-    const channel =
-      existing ||
-      supabase.channel(`game-state:${gameId}`, {
+    if (existing) {
+      existing.send({ type: 'broadcast', event: 'fast_buzz', payload })
+    } else {
+      // Fallback: open a temporary channel and broadcast once subscribed
+      const ch = supabase.channel(`game-state:${gameId}`, {
         config: { broadcast: { self: true, ack: false } },
       })
-
-    channel.send({
-      type: 'broadcast',
-      event: 'fast_buzz',
-      payload,
-    })
+      ch.subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          ch.send({ type: 'broadcast', event: 'fast_buzz', payload })
+        }
+      })
+    }
   } catch (err) {
     console.warn('broadcastFastBuzz error:', err)
   }
@@ -47,6 +53,8 @@ export function broadcastHostAction(gameId: string, action: string, payload?: Re
 export function useGameState(gameId: string, initialGame: Game): Game {
   const [game, setGame] = useState<Game>(initialGame)
   const channelRef = useRef<ReturnType<ReturnType<typeof getSupabaseBrowserClient>['channel']> | null>(null)
+  // Use a stable ref so useEffect never re-runs due to object identity changes
+  const roomCodeRef = useRef(initialGame.room_code)
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient()
@@ -163,7 +171,7 @@ export function useGameState(gameId: string, initialGame: Game): Game {
     // ── Resynchronize on Screen Unlock / Tab Refocus (Mobile Sleep & Wake) ──
     const syncFreshSnapshot = async () => {
       try {
-        const roomCode = initialGame.room_code
+        const roomCode = roomCodeRef.current
         if (!roomCode) return
         const res = await fetch(`/api/games/${roomCode}`, { cache: 'no-store' })
         if (res.ok) {
@@ -191,7 +199,7 @@ export function useGameState(gameId: string, initialGame: Game): Game {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       supabase.removeChannel(channel)
     }
-  }, [gameId, initialGame.room_code])
+  }, [gameId]) // gameId is stable — never changes for the same room
 
   return game
 }

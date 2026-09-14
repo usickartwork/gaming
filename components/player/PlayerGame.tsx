@@ -204,6 +204,16 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_winner_id])
 
+  // Also reset local state when buzz_state goes back to READY or DISABLED
+  // This prevents the "buzzer terkunci" screen from being stuck after a WRONG evaluation
+  useEffect(() => {
+    if (game.buzz_state === 'READY' || game.buzz_state === 'DISABLED') {
+      setLocalWinner(null)
+      setLocalWinnerName(null)
+      setIsBuzzing(false)
+    }
+  }, [game.buzz_state])
+
   // Sync local winner state immediately when buzz_winner_id arrives from DB
   useEffect(() => {
     if (game.buzz_winner_id) {
@@ -221,10 +231,11 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
 
   const me = players.find((p) => p.id === session.playerId)
-  // Player is winner ONLY if DB confirms it, or local confirmation while DB update is in-flight
+  // isWinner = true ONLY when the DB confirms this player is the buzz winner.
+  // localWinner is only used for optimistic UI while the DB update is in-flight.
   const isWinner =
     game.buzz_winner_id === session.playerId ||
-    (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
+    (localWinner === true && game.buzz_winner_id === session.playerId)
   const isExcluded = Boolean(me && me.excluded_attempt !== null)
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
@@ -545,7 +556,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   }
 
   // ── LOCKED: Someone else won ────────────────────────────────────
-  if ((localWinner === false || game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
+  if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         {renderFeedbackOverlay()}

@@ -69,7 +69,16 @@ export async function arbitrateBuzz(
   // 2. Check if an arbitration window is currently open
   const existingSession = activeSessions.get(key)
   if (existingSession && now < existingSession.deadline) {
-    existingSession.candidates.push(candidate)
+    // Deduplicate: keep only the earliest pressedAt for each player
+    const existing = existingSession.candidates.find((c) => c.playerId === candidate.playerId)
+    if (!existing) {
+      existingSession.candidates.push(candidate)
+    } else if (candidate.pressedAt < existing.pressedAt) {
+      // Replace with earlier timestamp
+      existingSession.candidates = existingSession.candidates.map((c) =>
+        c.playerId === candidate.playerId ? candidate : c
+      )
+    }
     return await existingSession.promise
   }
 
@@ -121,3 +130,4 @@ export async function arbitrateBuzz(
 
   return await session.promise
 }
+
