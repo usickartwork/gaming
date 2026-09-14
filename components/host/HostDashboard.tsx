@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useGameState } from '@/lib/hooks/useGameState'
+import { useGameState, broadcastHostAction } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
@@ -82,11 +82,12 @@ export function HostDashboard({
           },
           body: JSON.stringify({ action, payload }),
         })
+        broadcastHostAction(game.id, action, payload)
       } finally {
         setIsLoading(false)
       }
     },
-    [game.room_code, hostSession.hostPassword]
+    [game.room_code, hostSession.hostPassword, game.id]
   )
 
   // Playlist Sections State (Permanent across rooms and sessions)

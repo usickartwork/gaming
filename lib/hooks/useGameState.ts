@@ -23,6 +23,14 @@ export function broadcastFastBuzz(gameId: string, payload: Record<string, any>) 
 }
 
 /**
+ * Host-only broadcast: signal players about a host action (NEXT_SONG, SET_BUZZ_STATE, etc.)
+ * so they don't have to wait for the slower postgres_changes path.
+ */
+export function broadcastHostAction(gameId: string, action: string, payload?: Record<string, any>) {
+  broadcastFastBuzz(gameId, { type: 'HOST_ACTION', action, payload })
+}
+
+/**
  * Subscribes to real-time changes on the games table for a specific game,
  * combining instant WebSocket broadcast events with persistent database changes.
  */
@@ -53,6 +61,39 @@ export function useGameState(gameId: string, initialGame: Game): Game {
               buzz_state: 'LOCKED',
               buzz_winner_id: msg.winnerId,
             }))
+          } else if (msg.type === 'HOST_ACTION') {
+            setGame((prev) => {
+              const next = { ...prev }
+              switch (msg.action) {
+                case 'NEXT_SONG':
+                  next.current_song_id = null
+                  next.buzz_state = 'DISABLED'
+                  next.buzz_winner_id = null
+                  next.current_attempt = 1
+                  break
+                case 'SET_BUZZ_STATE':
+                  next.buzz_state = msg.payload?.buzzState || 'DISABLED'
+                  next.buzz_winner_id = null
+                  break
+                case 'SET_CURRENT_SONG':
+                  next.current_song_id = msg.payload?.songId || null
+                  next.buzz_state = 'DISABLED'
+                  next.buzz_winner_id = null
+                  next.current_attempt = 1
+                  break
+                case 'SET_GAME_STATUS':
+                  next.status = msg.payload?.status || prev.status
+                  break
+                case 'SET_ROUND':
+                  next.current_round = msg.payload?.round || prev.current_round
+                  next.current_song_id = null
+                  next.buzz_state = 'DISABLED'
+                  next.buzz_winner_id = null
+                  next.current_attempt = 1
+                  break
+              }
+              return next
+            })
           }
         }
       )

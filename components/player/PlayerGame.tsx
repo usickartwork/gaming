@@ -454,6 +454,15 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             </p>
           </div>
 
+          {gameMode !== 'KNOCKOUT' && (
+            <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl text-left">
+              <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 text-center">
+                Peringkat Sementara
+              </p>
+              <Leaderboard players={players} highlightId={session.playerId} />
+            </div>
+          )}
+
           <p className="text-slate-500 text-xs animate-pulse">
             Host sedang mendengarkan jawabanmu...
           </p>
@@ -501,6 +510,15 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
               <span className="text-sm text-slate-500 font-semibold">pts</span>
             </p>
           </div>
+
+          {gameMode !== 'KNOCKOUT' && (
+            <div className="glass-panel rounded-3xl p-4 border border-white/10 shadow-2xl text-left max-h-56 overflow-y-auto">
+              <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-3 text-center">
+                Peringkat Sementara
+              </p>
+              <Leaderboard players={players} highlightId={session.playerId} />
+            </div>
+          )}
 
           <p className="text-slate-500 text-xs">
             Tunggu evaluasi host (Benar / Salah)...
