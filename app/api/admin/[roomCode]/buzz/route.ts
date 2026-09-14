@@ -9,13 +9,10 @@ export const dynamic = 'force-dynamic'
  *
  * Ultra-Fair Buzzer with Database Atomic Lock & Timestamp Arbitration:
  *
- * 1. Clocks are calibrated via the ultra-fast Edge ping endpoint.
- * 2. When a player presses buzz, their calibrated UTC timestamp (pressedAt) is submitted.
- * 3. The first request to reach PostgreSQL locks the game atomically (`buzz_state = 'READY' -> 'LOCKED'`).
- * 4. GRACE WINDOW (250ms): If another player's request arrives slightly later due to network latency,
- *    BUT their physical press timestamp (pressedAt) was EARLIER than the current winner's timestamp,
- *    the database atomically awards the win to the true earlier player!
- * 5. This is 100% immune to network speed discrepancies, cold starts, and serverless isolation bugs.
+ * 1. Safe query using ONLY guaranteed core columns (no unmigrated columns).
+ * 2. Atomic lock on PostgreSQL (`buzz_state = 'READY' -> 'LOCKED'`).
+ * 3. 250ms Grace Window: If a player on a slower network physically touched first
+ *    (calibrated pressedAt is earlier), the database atomically awards them the win.
  */
 export async function POST(
   req: NextRequest,
@@ -34,7 +31,7 @@ export async function POST(
 
     const supabase = getSupabaseServerClient()
 
-    // Parallel session & game verification
+    // Parallel session & game verification (ONLY guaranteed columns from 001_schema.sql)
     const [
       { data: player, error: playerErr },
       { data: game, error: gameErr },
@@ -47,16 +44,18 @@ export async function POST(
         .single(),
       supabase
         .from('games')
-        .select('id, name, buzz_state, buzz_winner_id, current_attempt, tournament_state')
+        .select('id, name, buzz_state, buzz_winner_id, current_attempt')
         .eq('room_code', normalizedRoom)
         .single(),
     ])
 
     if (playerErr || !player) {
+      console.warn('[buzz] Invalid player session:', { playerId, playerErr })
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
     }
 
     if (gameErr || !game || game.id !== player.game_id) {
+      console.warn('[buzz] Game not found:', { normalizedRoom, gameErr })
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     }
 
@@ -105,8 +104,8 @@ export async function POST(
     // ── TIMESTAMP SANITIZATION ───────────────────────────────────────
     const now = Date.now()
     let pressedAt = typeof rawPressedAt === 'number' && !isNaN(rawPressedAt) ? rawPressedAt : now
-    // Anti-spoofing clamp: cannot claim to have pressed in the distant future or past
-    if (pressedAt > now + 120) pressedAt = now
+    // Anti-spoofing clamp
+    if (pressedAt > now + 150) pressedAt = now
     if (pressedAt < now - 4000) pressedAt = now - 4000
 
     const currentTs: any = ts ? { ...ts } : {}
@@ -134,14 +133,14 @@ export async function POST(
         .eq('id', game.id)
         .eq('buzz_state', 'READY')
         .select('buzz_winner_id')
-        .single()
+        .maybeSingle()
 
       if (!lockErr && lockedGame?.buzz_winner_id === playerId) {
-        // Save tournament state with lock metadata
-        await saveGameTournament(supabase, game.id, game.name, updatedTs, mode, {
+        // Save tournament state with lock metadata asynchronously
+        saveGameTournament(supabase, game.id, game.name, updatedTs, mode, {
           buzz_state: 'LOCKED',
           buzz_winner_id: playerId,
-        })
+        }).catch((e) => console.warn('saveGameTournament lock error:', e))
 
         return NextResponse.json({
           winner: true,
@@ -153,8 +152,6 @@ export async function POST(
     }
 
     // ── CASE 2: Buzzer was LOCKED, but this player pressed EARLIER! ─
-    // If a slower network delayed this packet by up to 250ms, but this player
-    // physically touched the screen earlier than the current winner:
     if (
       game.buzz_state === 'LOCKED' &&
       game.buzz_winner_id &&
@@ -167,12 +164,11 @@ export async function POST(
       const correctedTs = {
         ...currentTs,
         buzz_pressed_at: pressedAt,
-        buzz_locked_at: lockedAt, // preserve original lock timestamp
+        buzz_locked_at: lockedAt,
         buzz_winner_id: playerId,
         buzz_winner_name: player.name,
       }
 
-      // Atomic steal: only replaces if the previous winner was still the current lock holder
       const { data: stolenGame, error: stealErr } = await supabase
         .from('games')
         .update({
@@ -182,13 +178,13 @@ export async function POST(
         .eq('buzz_state', 'LOCKED')
         .eq('buzz_winner_id', previousWinnerId)
         .select('buzz_winner_id')
-        .single()
+        .maybeSingle()
 
       if (!stealErr && stolenGame?.buzz_winner_id === playerId) {
-        await saveGameTournament(supabase, game.id, game.name, correctedTs, mode, {
+        saveGameTournament(supabase, game.id, game.name, correctedTs, mode, {
           buzz_state: 'LOCKED',
           buzz_winner_id: playerId,
-        })
+        }).catch((e) => console.warn('saveGameTournament steal error:', e))
 
         return NextResponse.json({
           winner: true,
@@ -201,7 +197,7 @@ export async function POST(
     }
 
     // ── CASE 3: Not the winner ───────────────────────────────────────
-    // Re-fetch the fresh game state to report the confirmed winner
+    // Re-fetch confirmed winner
     const { data: freshGame } = await supabase
       .from('games')
       .select('buzz_winner_id')
