@@ -55,14 +55,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const prevBuzzStateRef = useRef(game.buzz_state)
   const prevAttemptRef = useRef(game.current_attempt)
   const lastWinnerPlayerRef = useRef<string | null>(null)
-  const serverOffsetRef = useRef<number>(0)
+  const minRttRef = useRef<number>(200) // default 200ms until first ping
 
-  // High-precision clock calibration (Cristian's algorithm with min-RTT sampling)
-  // Eliminates network latency discrepancies so buzzer timing reflects true physical touch
+  // Measure round-trip time to server — used for fair buzzer correction on server side.
+  // RTT is a relative measurement so it's immune to device clock drift & asymmetric networks.
   useEffect(() => {
     let isMounted = true
 
-    const samplePing = async (): Promise<{ offset: number; rtt: number } | null> => {
+    const measureRtt = async (): Promise<number | null> => {
       try {
         const t0 = Date.now()
         const res = await fetch('/api/games/ping', {
@@ -70,40 +70,30 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           headers: { 'Cache-Control': 'no-cache, no-store' },
         })
         if (!res.ok) return null
-        const data = await res.json()
-        const t1 = Date.now()
-        const rtt = t1 - t0
-        if (typeof data?.serverTime !== 'number') return null
-        const clientMidpoint = t0 + rtt / 2
-        const offset = data.serverTime - clientMidpoint
-        return { offset, rtt }
+        return Date.now() - t0
       } catch {
         return null
       }
     }
 
-    const syncClock = async () => {
-      // 3 rapid samples to discard mobile radio spin-up jitter
-      const samples: { offset: number; rtt: number }[] = []
+    const syncRtt = async () => {
+      const rtts: number[] = []
       for (let i = 0; i < 3; i++) {
         if (!isMounted) return
-        const s = await samplePing()
-        if (s) samples.push(s)
+        const rtt = await measureRtt()
+        if (rtt !== null) rtts.push(rtt)
         if (i < 2) await new Promise((r) => setTimeout(r, 60))
       }
-      if (!isMounted || samples.length === 0) return
-      // The sample with the lowest round-trip-time had the least bufferbloat / queue delay
-      samples.sort((a, b) => a.rtt - b.rtt)
-      serverOffsetRef.current = Math.round(samples[0].offset)
+      if (!isMounted || rtts.length === 0) return
+      // Use minimum RTT — least affected by network jitter
+      minRttRef.current = Math.min(...rtts)
     }
 
-    syncClock()
-    const interval = setInterval(syncClock, 20000)
+    syncRtt()
+    const interval = setInterval(syncRtt, 20000)
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        syncClock()
-      }
+      if (document.visibilityState === 'visible') syncRtt()
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
@@ -306,8 +296,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (isBuzzing) return false
     setIsBuzzing(true)
 
-    // Calculate calibrated press timestamp to eliminate latency discrepancies
-    const pressedAt = Date.now() + (serverOffsetRef.current || 0)
+    // Send our measured RTT — server uses this to compute fair adjusted press time:
+    // adjustedPressTime = serverReceiveTime - rtt/2
+    // This is immune to client clock drift and asymmetric network conditions.
+    const clientRtt = Math.max(10, Math.min(minRttRef.current || 200, 3000))
 
     try {
       const res = await fetch(`/api/admin/${game.room_code}/buzz`, {
@@ -316,7 +308,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           'Content-Type': 'application/json',
           'x-session-token': session.sessionToken,
         },
-        body: JSON.stringify({ playerId: session.playerId, pressedAt }),
+        body: JSON.stringify({ playerId: session.playerId, clientRtt }),
       })
       const data = await res.json()
       if (!res.ok) {

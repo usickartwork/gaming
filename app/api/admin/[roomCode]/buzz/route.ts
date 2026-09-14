@@ -20,7 +20,7 @@ export async function POST(
     const normalizedRoom = roomCode.toUpperCase()
     const sessionToken = req.headers.get('x-session-token')
     const body = await req.json().catch(() => ({}))
-    const { playerId, pressedAt } = body
+    const { playerId, clientRtt } = body
 
     if (!sessionToken || !playerId) {
       return NextResponse.json({ error: 'Missing credentials' }, { status: 400 })
@@ -128,21 +128,24 @@ export async function POST(
       })
     }
 
-    // Sanitize and validate physical press timestamp (prevents client spoofing)
-    const now = Date.now()
-    let calibratedPressedAt = typeof pressedAt === 'number' && !isNaN(pressedAt) ? pressedAt : now
-    if (calibratedPressedAt > now + 80) {
-      calibratedPressedAt = now // clamp future timestamps
-    }
-    if (calibratedPressedAt < now - 3500) {
-      calibratedPressedAt = now - 3500 // clamp absurd past timestamps
-    }
+    // ── SERVER-SIDE FAIR PRESS TIME CALCULATION ─────────────────────
+    // Instead of trusting client-provided timestamps (prone to clock drift),
+    // we compute: adjustedPressTime = serverReceiveTime - oneWayLatency
+    // where oneWayLatency ≈ clientRtt / 2 (assumes symmetric network)
+    //
+    // RTT is a RELATIVE measurement — immune to client clock drift and
+    // asymmetric network jitter that plagued the old Cristian's Algorithm approach.
+    const receivedAt = Date.now()
+    const rtt = typeof clientRtt === 'number' && clientRtt >= 10 && clientRtt <= 3000
+      ? clientRtt
+      : 200 // default 200ms if client didn't send RTT
+    const adjustedPressTime = receivedAt - Math.round(rtt / 2)
 
     const candidate: Candidate = {
       playerId,
       playerName: player.name,
-      pressedAt: calibratedPressedAt,
-      receivedAt: now,
+      pressedAt: adjustedPressTime,
+      receivedAt,
     }
 
     // ── LATENCY-FAIR ARBITRATION ────────────────────────────────────
