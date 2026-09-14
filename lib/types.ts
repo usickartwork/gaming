@@ -58,6 +58,8 @@ export interface TournamentState {
   qualifyCount?: 2 | 3
   playlists?: PlaylistSection[]
   lastSongOutcome?: 'CORRECT' | 'ALL_WRONG' | null
+  lastWinnerId?: string | null
+  lastWinnerName?: string | null
 }
 
 export interface Game {

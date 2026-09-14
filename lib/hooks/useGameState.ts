@@ -94,7 +94,7 @@ export function useGameState(gameId: string, initialGame: Game): Game {
                 case 'ANSWER_RESULT':
                   if (msg.payload?.result === 'CORRECT') {
                     next.buzz_state = 'RESULT'
-                    next.buzz_winner_id = prev.buzz_winner_id
+                    next.buzz_winner_id = msg.payload?.winnerId || prev.buzz_winner_id
                     next.current_attempt = 1
                   } else if (msg.payload?.result === 'WRONG') {
                     if (msg.payload?.allWrong) {

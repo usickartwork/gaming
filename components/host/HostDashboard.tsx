@@ -542,7 +542,12 @@ export function HostDashboard({
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
       // 1. Instant optimistic feedback & sub-30ms broadcast
-      broadcastHostAction(game.id, 'ANSWER_RESULT', { result })
+      const currentBuzzWinner = players.find((p) => p.id === game.buzz_winner_id)
+      broadcastHostAction(game.id, 'ANSWER_RESULT', {
+        result,
+        winnerId: game.buzz_winner_id,
+        winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+      })
       if (result === 'CORRECT') {
         playCorrectFanfareSound()
         setFeedbackAnim('correct')

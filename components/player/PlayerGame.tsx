@@ -55,6 +55,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const prevBuzzStateRef = useRef(game.buzz_state)
   const prevAttemptRef = useRef(game.current_attempt)
   const lastWinnerPlayerRef = useRef<string | null>(null)
+  const lastWinnerIdRef = useRef<string | null>(null)
   const serverOffsetRef = useRef<number>(0)
 
   // Calibrate client-server clock offset to eliminate network latency advantage on buzzes
@@ -82,6 +83,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   // Track who was the active buzzing player before evaluate
   useEffect(() => {
     if (game.buzz_winner_id) {
+      lastWinnerIdRef.current = game.buzz_winner_id
       const winner = players.find((p) => p.id === game.buzz_winner_id)
       if (winner) lastWinnerPlayerRef.current = winner.name
     }
@@ -157,14 +159,18 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_state, game.room_code, game.current_song_id])
 
-  // Reset local state whenever the buzz winner is cleared (NEXT_SONG, RESET, etc.)
+  // Reset local state whenever new question starts or buzz is enabled (READY, DISABLED)
   useEffect(() => {
-    if (game.buzz_winner_id === null) {
+    if (
+      game.buzz_state === 'READY' ||
+      game.buzz_state === 'DISABLED' ||
+      (game.buzz_winner_id === null && game.buzz_state !== 'RESULT')
+    ) {
       setLocalWinner(null)
       setLocalWinnerName(null)
       setIsBuzzing(false)
     }
-  }, [game.buzz_winner_id])
+  }, [game.buzz_state, game.buzz_winner_id])
 
   // Sync local winner state immediately when buzz_winner_id arrives from DB
   useEffect(() => {
@@ -189,6 +195,23 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
   const isExcluded = Boolean(me && me.excluded_attempt !== null)
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
+
+  const roundWinnerId =
+    game.buzz_winner_id ||
+    tournamentState?.lastWinnerId ||
+    lastWinnerIdRef.current
+
+  const isMeWinner = Boolean(
+    roundWinnerId === session.playerId ||
+    (localWinner === true && (!roundWinnerId || roundWinnerId === session.playerId))
+  )
+
+  const roundWinnerName =
+    (roundWinnerId ? players.find((p) => p.id === roundWinnerId)?.name : null) ||
+    tournamentState?.lastWinnerName ||
+    lastWinnerPlayerRef.current ||
+    localWinnerName ||
+    'Pemain Lain'
 
   // Tournament state helpers
   const phase: TournamentPhase =
@@ -300,8 +323,8 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const renderFeedbackOverlay = () => {
     if (feedbackAnim === 'none') return null
 
-    const isMe = localWinner === true || game.buzz_winner_id === session.playerId
-    const winnerName = lastWinnerPlayerRef.current || buzzWinnerPlayer?.name || localWinnerName || 'Pemain Lain'
+    const isMe = isMeWinner
+    const winnerName = roundWinnerName
 
     if (feedbackAnim === 'correct') {
       return (
@@ -448,7 +471,11 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   }
 
   // ── LOCKED: This player won ─────────────────────────────────────
-  if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && isWinner) {
+  if (
+    game.buzz_state !== 'RESULT' &&
+    (game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') &&
+    isWinner
+  ) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-emerald-950/60 via-slate-900 to-black">
         {renderFeedbackOverlay()}
@@ -507,7 +534,11 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   }
 
   // ── LOCKED: Someone else won ────────────────────────────────────
-  if ((localWinner === false || game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
+  if (
+    game.buzz_state !== 'RESULT' &&
+    (localWinner === false || game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') &&
+    !isWinner
+  ) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         {renderFeedbackOverlay()}
@@ -576,12 +607,77 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           currentPlayerId={session.playerId}
         />
         <div className="w-full max-w-sm space-y-3 relative z-10 py-2">
-          {/* Revealed Song Title & Artist Header (Compact & Clean) */}
+          {/* Round Outcome Status Banner: Kamu Benar vs Pemain Lain Benar vs Gagal */}
+          {isAllWrong ? (
+            <div className="glass-panel rounded-2xl p-3 border border-rose-500/40 bg-gradient-to-r from-rose-950/80 via-slate-900 to-slate-950 shadow-xl flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-400 shrink-0 shadow-md">
+                <CrossIcon size={24} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="inline-block px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-black text-[9px] uppercase tracking-wider mb-0.5">
+                  TIDAK TERTEBAK
+                </span>
+                <h2 className="text-white font-black text-sm sm:text-base leading-tight">
+                  Kesempatan Habis
+                </h2>
+                <p className="text-slate-400 text-xs truncate mt-0.5">
+                  Tidak ada pemain yang berhasil menebak lagu ini
+                </p>
+              </div>
+            </div>
+          ) : isMeWinner ? (
+            <div className="glass-panel rounded-2xl p-3.5 border border-emerald-500/50 bg-gradient-to-r from-emerald-950/80 via-emerald-900/40 to-slate-950 shadow-xl flex items-center gap-3 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 flex items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0">
+                <div className="w-full h-full rounded-[10px] bg-slate-950 flex items-center justify-center text-emerald-400">
+                  <CheckIcon size={26} />
+                </div>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-400 text-slate-950 font-black text-[9px] uppercase tracking-wider shadow-sm">
+                    TEBAKAN TEPAT
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-400">
+                    +{gameMode === 'KNOCKOUT' ? '1 Poin Duel' : 'Poin Masuk!'}
+                  </span>
+                </div>
+                <h2 className="text-white font-black text-base sm:text-lg leading-tight tracking-tight">
+                  KAMU BENAR! 🎉
+                </h2>
+                <p className="text-emerald-300 font-semibold text-xs truncate mt-0.5">
+                  Hebat! Skormu saat ini:{' '}
+                  <strong className="text-white font-mono font-bold">
+                    {gameMode === 'KNOCKOUT' ? myDuelScore : (me?.score ?? 0)} pts
+                  </strong>
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="glass-panel rounded-2xl p-3 border border-emerald-500/30 bg-gradient-to-r from-teal-950/60 via-slate-900 to-slate-950 shadow-xl flex items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-400 shrink-0 shadow-md">
+                <CheckIcon size={22} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-black text-[9px] uppercase tracking-wider mb-0.5">
+                  LAGU TERTEBAK
+                </span>
+                <h2 className="text-white font-black text-sm sm:text-base leading-tight truncate">
+                  {roundWinnerName} Menang Ronde Ini!
+                </h2>
+                <p className="text-slate-400 text-xs truncate mt-0.5">
+                  {roundWinnerName} berhasil menebak judul lagu dengan tepat
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Revealed Song Title & Artist Card */}
           <div
             className={`glass-panel rounded-2xl p-3 border shadow-xl flex items-center gap-3 relative overflow-hidden ${
               isAllWrong
-                ? 'border-rose-500/40 bg-gradient-to-r from-rose-950/70 via-slate-900 to-slate-950'
-                : 'border-emerald-500/40 bg-gradient-to-r from-emerald-950/70 via-slate-900 to-slate-950'
+                ? 'border-rose-500/30 bg-slate-900/90'
+                : 'border-emerald-500/30 bg-slate-900/90'
             }`}
           >
             <div
@@ -595,20 +691,12 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <span
-                  className={`inline-block px-2 py-0.5 rounded-full font-black text-[9px] uppercase tracking-wider ${
-                    isAllWrong
-                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                      : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                  }`}
-                >
-                  {isAllWrong ? 'TIDAK TERTEBAK' : 'LAGU TERTEBAK'}
-                </span>
-              </div>
-              <h2 className="text-white font-black text-sm sm:text-base truncate leading-tight">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">
+                {isAllWrong ? 'Lagu Yang Dimainkan' : 'Judul Lagu'}
+              </p>
+              <h3 className="text-white font-black text-sm sm:text-base truncate leading-tight">
                 {revealedSong?.title || (loadingSong ? 'Memuat Judul...' : isAllWrong ? 'Lagu Tidak Tertebak' : 'Lagu Tertebak')}
-              </h2>
+              </h3>
               {revealedSong?.artist && (
                 <p className="text-slate-400 font-semibold text-xs truncate">
                   {revealedSong.artist}

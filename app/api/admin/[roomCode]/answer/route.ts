@@ -72,7 +72,7 @@ export async function POST(
     // Update player score
     const { data: player } = await supabase
       .from('players')
-      .select('score')
+      .select('name, score')
       .eq('id', game.buzz_winner_id)
       .single()
 
@@ -127,9 +127,11 @@ export async function POST(
 
       // Mark that this song was answered correctly and move to RESULT state in a single atomic update
       ts.lastSongOutcome = 'CORRECT'
+      ts.lastWinnerId = game.buzz_winner_id
+      ts.lastWinnerName = player?.name || null
       await saveGameTournament(supabase, game.id, game.name, ts, mode, {
         buzz_state: 'RESULT',
-        buzz_winner_id: null,
+        buzz_winner_id: game.buzz_winner_id,
         current_attempt: 1,
       })
 
@@ -223,6 +225,8 @@ export async function POST(
         } as TournamentState)
 
         tsObj.lastSongOutcome = 'ALL_WRONG'
+        tsObj.lastWinnerId = null
+        tsObj.lastWinnerName = null
         await saveGameTournament(supabase, game.id, game.name, tsObj, mode, {
           buzz_state: 'RESULT',
           buzz_winner_id: null,
