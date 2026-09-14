@@ -131,14 +131,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_state, game.room_code, game.current_song_id])
 
-  // Reset local state when host enables buzz again
+  // Reset local state whenever the buzz winner is cleared (NEXT_SONG, RESET, etc.)
   useEffect(() => {
-    if (game.buzz_state === 'READY' && game.buzz_winner_id === null) {
+    if (game.buzz_winner_id === null) {
       setLocalWinner(null)
       setLocalWinnerName(null)
       setIsBuzzing(false)
     }
-  }, [game.buzz_state, game.buzz_winner_id])
+  }, [game.buzz_winner_id])
 
   // Sync local winner state immediately when buzz_winner_id arrives from DB
   useEffect(() => {
