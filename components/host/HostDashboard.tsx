@@ -72,10 +72,25 @@ export function HostDashboard({
   // ── Host API helper ──────────────────────────────────────────────
   const hostAction = useCallback(
     async (action: string, payload?: object) => {
-      // Broadcast immediately so players react in sub-30ms
-      broadcastHostAction(game.id, action, payload)
       setIsLoading(true)
       try {
+        // If opening buzzer, ensure DB is READY first so no player buzzes before DB is updated
+        if (action === 'SET_BUZZ_STATE' && (payload as any)?.buzzState === 'READY') {
+          await fetch(`/api/admin/${game.room_code}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-host-password': hostSession.hostPassword,
+            },
+            body: JSON.stringify({ action, payload }),
+          })
+          // Now that DB is 100% READY, signal all players
+          broadcastHostAction(game.id, action, payload)
+          return
+        }
+
+        // For other actions, broadcast immediately for snappy UI
+        broadcastHostAction(game.id, action, payload)
         await fetch(`/api/admin/${game.room_code}`, {
           method: 'PATCH',
           headers: {
@@ -541,12 +556,13 @@ export function HostDashboard({
 
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
-      if (!game.buzz_winner_id || isLoading) return
+      // 1. Instant optimistic feedback & sub-30ms broadcast
       const currentBuzzWinner = players.find((p) => p.id === game.buzz_winner_id)
-      const targetWinnerId = game.buzz_winner_id
-      const targetWinnerName = currentBuzzWinner?.name || 'Pemain Lain'
-
-      // Play sound immediately for host responsiveness (visual-only, doesn't block)
+      broadcastHostAction(game.id, 'ANSWER_RESULT', {
+        result,
+        winnerId: game.buzz_winner_id,
+        winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+      })
       if (result === 'CORRECT') {
         playCorrectFanfareSound()
         setFeedbackAnim('correct')
@@ -559,7 +575,7 @@ export function HostDashboard({
 
       setIsLoading(true)
       try {
-        const res = await fetch(`/api/admin/${game.room_code}/answer`, {
+        await fetch(`/api/admin/${game.room_code}/answer`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -567,32 +583,11 @@ export function HostDashboard({
           },
           body: JSON.stringify({ result }),
         })
-        const data = await res.json()
-        if (!res.ok) return
-
-        // Broadcast AFTER API has committed to DB — ensures no race condition
-        if (result === 'CORRECT') {
-          broadcastHostAction(game.id, 'ANSWER_RESULT', {
-            result: 'CORRECT',
-            winnerId: targetWinnerId,
-            winnerName: targetWinnerName,
-          })
-        } else {
-          broadcastHostAction(game.id, 'ANSWER_RESULT', {
-            result: 'WRONG',
-            allWrong: data.allWrong,
-            duelTurnPassed: data.duelTurnPassed,
-            nextPlayerId: data.nextPlayerId,
-            nextAttempt: data.nextAttempt,
-            winnerId: targetWinnerId,
-            winnerName: targetWinnerName,
-          })
-        }
       } finally {
         setIsLoading(false)
       }
     },
-    [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, isLoading, players]
+    [game.room_code, hostSession.hostPassword, game.id]
   )
 
   // ── Waiting Room ──────────────────────────────────────────────────

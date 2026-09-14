@@ -55,14 +55,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const prevBuzzStateRef = useRef(game.buzz_state)
   const prevAttemptRef = useRef(game.current_attempt)
   const lastWinnerPlayerRef = useRef<string | null>(null)
-  const minRttRef = useRef<number>(200) // default 200ms until first ping
+  const serverOffsetRef = useRef<number>(0)
 
-  // Measure round-trip time to server — used for fair buzzer correction on server side.
-  // RTT is a relative measurement so it's immune to device clock drift & asymmetric networks.
+  // High-precision clock calibration (Cristian's algorithm with min-RTT sampling)
+  // Eliminates network latency discrepancies so buzzer timing reflects true physical touch
   useEffect(() => {
     let isMounted = true
 
-    const measureRtt = async (): Promise<number | null> => {
+    const samplePing = async (): Promise<{ offset: number; rtt: number } | null> => {
       try {
         const t0 = Date.now()
         const res = await fetch('/api/games/ping', {
@@ -70,30 +70,40 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           headers: { 'Cache-Control': 'no-cache, no-store' },
         })
         if (!res.ok) return null
-        return Date.now() - t0
+        const data = await res.json()
+        const t1 = Date.now()
+        const rtt = t1 - t0
+        if (typeof data?.serverTime !== 'number') return null
+        const clientMidpoint = t0 + rtt / 2
+        const offset = data.serverTime - clientMidpoint
+        return { offset, rtt }
       } catch {
         return null
       }
     }
 
-    const syncRtt = async () => {
-      const rtts: number[] = []
+    const syncClock = async () => {
+      // 3 rapid samples to discard mobile radio spin-up jitter
+      const samples: { offset: number; rtt: number }[] = []
       for (let i = 0; i < 3; i++) {
         if (!isMounted) return
-        const rtt = await measureRtt()
-        if (rtt !== null) rtts.push(rtt)
+        const s = await samplePing()
+        if (s) samples.push(s)
         if (i < 2) await new Promise((r) => setTimeout(r, 60))
       }
-      if (!isMounted || rtts.length === 0) return
-      // Use minimum RTT — least affected by network jitter
-      minRttRef.current = Math.min(...rtts)
+      if (!isMounted || samples.length === 0) return
+      // The sample with the lowest round-trip-time had the least bufferbloat / queue delay
+      samples.sort((a, b) => a.rtt - b.rtt)
+      serverOffsetRef.current = Math.round(samples[0].offset)
     }
 
-    syncRtt()
-    const interval = setInterval(syncRtt, 20000)
+    syncClock()
+    const interval = setInterval(syncClock, 20000)
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') syncRtt()
+      if (document.visibilityState === 'visible') {
+        syncClock()
+      }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
@@ -221,11 +231,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
 
   const me = players.find((p) => p.id === session.playerId)
-  // isWinner = true ONLY when the DB confirms this player is the buzz winner.
-  // localWinner is only used for optimistic UI while the DB update is in-flight.
+  // isWinner is true when DB confirms it, or immediately when local confirmation arrives while DB is in-flight
   const isWinner =
     game.buzz_winner_id === session.playerId ||
-    (localWinner === true && game.buzz_winner_id === session.playerId)
+    (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
   const isExcluded = Boolean(me && me.excluded_attempt !== null)
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
@@ -296,10 +305,8 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (isBuzzing) return false
     setIsBuzzing(true)
 
-    // Send our measured RTT — server uses this to compute fair adjusted press time:
-    // adjustedPressTime = serverReceiveTime - rtt/2
-    // This is immune to client clock drift and asymmetric network conditions.
-    const clientRtt = Math.max(10, Math.min(minRttRef.current || 200, 3000))
+    // Calculate calibrated press timestamp to eliminate latency discrepancies
+    const pressedAt = Date.now() + (serverOffsetRef.current || 0)
 
     try {
       const res = await fetch(`/api/admin/${game.room_code}/buzz`, {
@@ -308,7 +315,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           'Content-Type': 'application/json',
           'x-session-token': session.sessionToken,
         },
-        body: JSON.stringify({ playerId: session.playerId, clientRtt }),
+        body: JSON.stringify({ playerId: session.playerId, pressedAt }),
       })
       const data = await res.json()
       if (!res.ok) {
