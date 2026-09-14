@@ -55,64 +55,6 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const prevBuzzStateRef = useRef(game.buzz_state)
   const prevAttemptRef = useRef(game.current_attempt)
   const lastWinnerPlayerRef = useRef<string | null>(null)
-  const serverOffsetRef = useRef<number>(0)
-
-  // High-precision clock calibration (Cristian's algorithm with min-RTT sampling)
-  // Eliminates network latency discrepancies so buzzer timing reflects true physical touch
-  useEffect(() => {
-    let isMounted = true
-
-    const samplePing = async (): Promise<{ offset: number; rtt: number } | null> => {
-      try {
-        const t0 = Date.now()
-        const res = await fetch('/api/games/ping', {
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store' },
-        })
-        if (!res.ok) return null
-        const data = await res.json()
-        const t1 = Date.now()
-        const rtt = t1 - t0
-        if (typeof data?.serverTime !== 'number') return null
-        const clientMidpoint = t0 + rtt / 2
-        const offset = data.serverTime - clientMidpoint
-        return { offset, rtt }
-      } catch {
-        return null
-      }
-    }
-
-    const syncClock = async () => {
-      // 3 rapid samples to discard mobile radio spin-up jitter
-      const samples: { offset: number; rtt: number }[] = []
-      for (let i = 0; i < 3; i++) {
-        if (!isMounted) return
-        const s = await samplePing()
-        if (s) samples.push(s)
-        if (i < 2) await new Promise((r) => setTimeout(r, 60))
-      }
-      if (!isMounted || samples.length === 0) return
-      // The sample with the lowest round-trip-time had the least bufferbloat / queue delay
-      samples.sort((a, b) => a.rtt - b.rtt)
-      serverOffsetRef.current = Math.round(samples[0].offset)
-    }
-
-    syncClock()
-    const interval = setInterval(syncClock, 20000)
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        syncClock()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      isMounted = false
-      clearInterval(interval)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [])
 
   const countdownEndTime = tournamentState?.countdownEndTime ?? null
   const isCountingDown = typeof countdownEndTime === 'number' && countdownEndTime > Date.now()
@@ -305,9 +247,6 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (isBuzzing) return false
     setIsBuzzing(true)
 
-    // Calculate calibrated press timestamp to eliminate latency discrepancies
-    const pressedAt = Date.now() + (serverOffsetRef.current || 0)
-
     try {
       const res = await fetch(`/api/admin/${game.room_code}/buzz`, {
         method: 'POST',
@@ -315,7 +254,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           'Content-Type': 'application/json',
           'x-session-token': session.sessionToken,
         },
-        body: JSON.stringify({ playerId: session.playerId, pressedAt }),
+        body: JSON.stringify({ playerId: session.playerId }),
       })
       const data = await res.json()
       if (!res.ok) {
