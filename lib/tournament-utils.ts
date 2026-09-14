@@ -476,18 +476,23 @@ export async function saveGameTournament(
   gameId: string,
   currentName: string,
   state: TournamentState | null,
-  mode: 'CLASSIC' | 'KNOCKOUT'
+  mode: 'CLASSIC' | 'KNOCKOUT',
+  extraUpdates?: Record<string, any>
 ) {
   const encodedName = encodeGameStateName(currentName, state)
   await supabase
     .from('games')
-    .update({ name: encodedName })
+    .update({ name: encodedName, ...extraUpdates })
     .eq('id', gameId)
 
   try {
     await supabase
       .from('games')
-      .update({ game_mode: mode, tournament_state: state })
+      .update({
+        game_mode: mode,
+        tournament_state: state,
+        ...extraUpdates,
+      })
       .eq('id', gameId)
   } catch {
     // Gracefully ignore if columns not in DB schema yet

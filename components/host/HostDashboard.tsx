@@ -495,6 +495,7 @@ export function HostDashboard({
   // Track previous buzz state and attempt to detect answer evaluations in real-time
   const prevBuzzStateRef = useRef(game.buzz_state)
   const prevAttemptRef = useRef(game.current_attempt)
+  const lastHostFeedbackTimeRef = useRef(0)
 
   // Synchronized sound & visual feedback on Host
   // Triggers ONLY after real-time update arrives from server and gives player screen a slight head-start (350ms)
@@ -502,21 +503,25 @@ export function HostDashboard({
   useEffect(() => {
     // When answer is evaluated as CORRECT or all failed (game transitions to RESULT)
     if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
-      const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
-      const t = setTimeout(() => {
-        if (isAllWrong) {
-          playWrongSound()
-          setFeedbackAnim('wrong')
-          setTimeout(() => setFeedbackAnim('none'), 1500)
-        } else {
-          playCorrectFanfareSound()
-          setFeedbackAnim('correct')
-          setTimeout(() => setFeedbackAnim('none'), 2000)
-        }
-      }, 350)
-      prevBuzzStateRef.current = game.buzz_state
-      prevAttemptRef.current = game.current_attempt
-      return () => clearTimeout(t)
+      const now = Date.now()
+      if (now - lastHostFeedbackTimeRef.current > 3000) {
+        lastHostFeedbackTimeRef.current = now
+        const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
+        const t = setTimeout(() => {
+          if (isAllWrong) {
+            playWrongSound()
+            setFeedbackAnim('wrong')
+            setTimeout(() => setFeedbackAnim('none'), 1500)
+          } else {
+            playCorrectFanfareSound()
+            setFeedbackAnim('correct')
+            setTimeout(() => setFeedbackAnim('none'), 2000)
+          }
+        }, 350)
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
+        return () => clearTimeout(t)
+      }
     }
 
     // When answer is evaluated as WRONG (attempt increments and state returns to READY)
@@ -525,14 +530,18 @@ export function HostDashboard({
       (prevBuzzStateRef.current === 'LOCKED' || prevBuzzStateRef.current === 'ANSWERING') &&
       game.current_attempt > prevAttemptRef.current
     ) {
-      const t = setTimeout(() => {
-        playWrongSound()
-        setFeedbackAnim('wrong')
-        setTimeout(() => setFeedbackAnim('none'), 1200)
-      }, 350)
-      prevBuzzStateRef.current = game.buzz_state
-      prevAttemptRef.current = game.current_attempt
-      return () => clearTimeout(t)
+      const now = Date.now()
+      if (now - lastHostFeedbackTimeRef.current > 2000) {
+        lastHostFeedbackTimeRef.current = now
+        const t = setTimeout(() => {
+          playWrongSound()
+          setFeedbackAnim('wrong')
+          setTimeout(() => setFeedbackAnim('none'), 1200)
+        }, 350)
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
+        return () => clearTimeout(t)
+      }
     }
 
     prevBuzzStateRef.current = game.buzz_state
@@ -542,6 +551,7 @@ export function HostDashboard({
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
       // 1. Instant optimistic feedback & sub-30ms broadcast
+      lastHostFeedbackTimeRef.current = Date.now()
       broadcastHostAction(game.id, 'ANSWER_RESULT', { result })
       if (result === 'CORRECT') {
         playCorrectFanfareSound()

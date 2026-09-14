@@ -125,19 +125,13 @@ export async function POST(
         }
       }
 
-      // Mark that this song was answered correctly
+      // Mark that this song was answered correctly and move to RESULT state in a single atomic update
       ts.lastSongOutcome = 'CORRECT'
-      await saveGameTournament(supabase, game.id, game.name, ts, mode)
-
-      // Song done — move to RESULT state, reset attempt counter
-      await supabase
-        .from('games')
-        .update({
-          buzz_state: 'RESULT',
-          buzz_winner_id: null,
-          current_attempt: 1,
-        })
-        .eq('id', game.id)
+      await saveGameTournament(supabase, game.id, game.name, ts, mode, {
+        buzz_state: 'RESULT',
+        buzz_winner_id: null,
+        current_attempt: 1,
+      })
 
       return NextResponse.json({ ok: true, points, ...duelResult })
     } else {
@@ -229,16 +223,11 @@ export async function POST(
         } as TournamentState)
 
         tsObj.lastSongOutcome = 'ALL_WRONG'
-        await saveGameTournament(supabase, game.id, game.name, tsObj, mode)
-
-        await supabase
-          .from('games')
-          .update({
-            buzz_state: 'RESULT',
-            buzz_winner_id: null,
-            current_attempt: 1,
-          })
-          .eq('id', game.id)
+        await saveGameTournament(supabase, game.id, game.name, tsObj, mode, {
+          buzz_state: 'RESULT',
+          buzz_winner_id: null,
+          current_attempt: 1,
+        })
         await supabase
           .from('players')
           .update({ excluded_attempt: null })

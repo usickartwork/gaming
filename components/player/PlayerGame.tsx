@@ -89,24 +89,31 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
 
+  const lastResultFeedbackTimeRef = useRef(0)
+  const lastWrongFeedbackTimeRef = useRef(0)
+
   // Real-time Sound & Visual Feedback for Correct vs Wrong answers
   useEffect(() => {
     // When game transitions to RESULT
     if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
-      if (tournamentState?.lastSongOutcome === 'ALL_WRONG') {
-        playWrongSound()
-        setFeedbackAnim('wrong')
-        const t = setTimeout(() => setFeedbackAnim('none'), 2000)
-        prevBuzzStateRef.current = game.buzz_state
-        prevAttemptRef.current = game.current_attempt
-        return () => clearTimeout(t)
-      } else {
-        playCorrectFanfareSound()
-        setFeedbackAnim('correct')
-        const t = setTimeout(() => setFeedbackAnim('none'), 2500)
-        prevBuzzStateRef.current = game.buzz_state
-        prevAttemptRef.current = game.current_attempt
-        return () => clearTimeout(t)
+      const now = Date.now()
+      if (now - lastResultFeedbackTimeRef.current > 3000) {
+        lastResultFeedbackTimeRef.current = now
+        if (tournamentState?.lastSongOutcome === 'ALL_WRONG') {
+          playWrongSound()
+          setFeedbackAnim('wrong')
+          const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+          prevBuzzStateRef.current = game.buzz_state
+          prevAttemptRef.current = game.current_attempt
+          return () => clearTimeout(t)
+        } else {
+          playCorrectFanfareSound()
+          setFeedbackAnim('correct')
+          const t = setTimeout(() => setFeedbackAnim('none'), 2500)
+          prevBuzzStateRef.current = game.buzz_state
+          prevAttemptRef.current = game.current_attempt
+          return () => clearTimeout(t)
+        }
       }
     }
 
@@ -116,12 +123,16 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       (prevBuzzStateRef.current === 'LOCKED' || prevBuzzStateRef.current === 'ANSWERING') &&
       game.current_attempt > prevAttemptRef.current
     ) {
-      playWrongSound()
-      setFeedbackAnim('wrong')
-      const t = setTimeout(() => setFeedbackAnim('none'), 2200)
-      prevBuzzStateRef.current = game.buzz_state
-      prevAttemptRef.current = game.current_attempt
-      return () => clearTimeout(t)
+      const now = Date.now()
+      if (now - lastWrongFeedbackTimeRef.current > 2000) {
+        lastWrongFeedbackTimeRef.current = now
+        playWrongSound()
+        setFeedbackAnim('wrong')
+        const t = setTimeout(() => setFeedbackAnim('none'), 2200)
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
+        return () => clearTimeout(t)
+      }
     }
 
     prevBuzzStateRef.current = game.buzz_state
