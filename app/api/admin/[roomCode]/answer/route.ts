@@ -180,6 +180,58 @@ export async function POST(
         }
       }
 
+      // ── NO-ONE-CAN-BUZZ DEADLOCK GUARD ──────────────────────────
+      // If every player who is allowed to answer has already answered wrong on this
+      // song, advancing to the next attempt would leave the buzzer open but nobody
+      // able to press it. Auto-close the song (RESULT) so the host can advance.
+      const { data: roomPlayers } = await supabase
+        .from('players')
+        .select('id, excluded_attempt')
+        .eq('game_id', game.id)
+
+      const eligibleIds = new Set(
+        (roomPlayers || [])
+          .filter((p) => p.excluded_attempt === null)
+          .map((p) => p.id)
+      )
+
+      let canStillBuzz = eligibleIds.size > 0
+      if (canStillBuzz && mode === 'KNOCKOUT') {
+        if (activePhase === 'KNOCKOUT') {
+          const activeMatch = ts?.matches.find((m) => m.id === ts?.activeMatchId)
+          const duelIds = new Set(
+            [activeMatch?.player1Id, activeMatch?.player2Id].filter(Boolean)
+          )
+          const eligibleDuelist = [...eligibleIds].some((id) => duelIds.has(id))
+          canStillBuzz = duelIds.size > 0 && eligibleDuelist
+        } else {
+          const groupIds = new Set(
+            activePhase === 'GROUP_B'
+              ? ts?.groupBPlayerIds || []
+              : ts?.groupAPlayerIds || []
+          )
+          const eligibleInGroup = [...eligibleIds].some((id) => groupIds.has(id))
+          canStillBuzz = groupIds.size > 0 && eligibleInGroup
+        }
+      }
+
+      if (!canStillBuzz) {
+        await supabase
+          .from('games')
+          .update({
+            buzz_state: 'RESULT',
+            buzz_winner_id: null,
+            current_attempt: 1,
+          })
+          .eq('id', game.id)
+        await supabase
+          .from('players')
+          .update({ excluded_attempt: null })
+          .eq('game_id', game.id)
+
+        return NextResponse.json({ ok: true, points, songEnded: true })
+      }
+
       // Default wrong flow: next attempt, reset buzz to READY
       const nextAttempt = game.current_attempt + 1
       await supabase

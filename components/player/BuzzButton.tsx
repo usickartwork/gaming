@@ -8,7 +8,7 @@ import { LockIcon, BlockedIcon, LightningIcon } from '@/components/shared/Icons'
 interface BuzzButtonProps {
   buzzState: BuzzState
   isWinner: boolean
-  onBuzz: () => Promise<void>
+  onBuzz: () => Promise<boolean>
   isExcluded?: boolean
   isBuzzing?: boolean
 }
@@ -37,9 +37,18 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
       navigator.vibrate([100, 30, 100])
     }
 
-    onBuzz().finally(() => {
-      setPressing(false)
-    })
+    // Only keep the press-guard locked when the claim actually succeeded.
+    // A rejected/dead buzzer press must not leave the button permanently inert.
+    onBuzz()
+      .then((claimed) => {
+        if (!claimed) pressedRef.current = false
+      })
+      .catch(() => {
+        pressedRef.current = false
+      })
+      .finally(() => {
+        setPressing(false)
+      })
   }
 
   const handlePointerDown = (e: React.PointerEvent) => {

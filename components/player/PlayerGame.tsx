@@ -161,7 +161,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const isWinner =
     game.buzz_winner_id === session.playerId ||
     (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
-  const isExcluded = Boolean(me?.excluded_attempt !== null)
+  const isExcluded = Boolean(me && me.excluded_attempt !== null)
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
   // Tournament state helpers
@@ -227,8 +227,8 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       (m.player1Id === session.playerId || m.player2Id === session.playerId)
   )
 
-  const handleBuzz = async () => {
-    if (isBuzzing) return
+  const handleBuzz = async (): Promise<boolean> => {
+    if (isBuzzing) return false
     setIsBuzzing(true)
 
     // Calculate calibrated press timestamp to eliminate latency discrepancies
@@ -244,6 +244,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         body: JSON.stringify({ playerId: session.playerId, pressedAt }),
       })
       const data = await res.json()
+      if (!res.ok) {
+        console.error('Buzz rejected:', data?.error || res.status)
+        return false
+      }
       if (data.winner === true) {
         setLocalWinner(true)
         playDingSound()
@@ -252,14 +256,15 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           winnerId: session.playerId,
           winnerName: session.playerName,
         })
-      } else {
-        setLocalWinner(false)
-        const matched = players.find((p) => p.id === data.winnerId)
-        setLocalWinnerName(data.winnerName || matched?.name || 'Pemain Lain')
+        return true
       }
+      setLocalWinner(false)
+      const matched = players.find((p) => p.id === data.winnerId)
+      setLocalWinnerName(data.winnerName || matched?.name || 'Pemain Lain')
+      return false
     } catch (err) {
       console.error('Buzz error:', err)
-      setLocalWinner(false)
+      return false
     } finally {
       setIsBuzzing(false)
     }
