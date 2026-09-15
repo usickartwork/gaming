@@ -154,7 +154,8 @@ export function useGameState(gameId: string, initialGame: Game): Game {
           filter: `id=eq.${gameId}`,
         },
         (payload: { new: Record<string, unknown> }) => {
-          setGame(payload.new as unknown as Game)
+          if (!payload.new || Object.keys(payload.new).length === 0) return
+          setGame((prev) => ({ ...prev, ...(payload.new as unknown as Game) }))
         }
       )
       .on(

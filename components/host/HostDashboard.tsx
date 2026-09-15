@@ -511,15 +511,15 @@ export function HostDashboard({
   }
 
   // Track previous buzz state and attempt to detect answer evaluations in real-time
-  const prevBuzzStateRef = useRef(game.buzz_state)
-  const prevAttemptRef = useRef(game.current_attempt)
+  const prevBuzzStateRef = useRef(game?.buzz_state ?? 'DISABLED')
+  const prevAttemptRef = useRef(game?.current_attempt ?? 1)
 
   // Synchronized sound & visual feedback on Host
   // Triggers ONLY after real-time update arrives from server and gives player screen a slight head-start (350ms)
   // so the player's phone animation has already appeared, completely eliminating audio spoilers.
   useEffect(() => {
     // When answer is evaluated as CORRECT or all failed (game transitions to RESULT)
-    if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
+    if (game?.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
       const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
       const t = setTimeout(() => {
         if (isAllWrong) {
@@ -608,6 +608,17 @@ export function HostDashboard({
     },
     [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, players]
   )
+
+  if (!game || !game.room_code) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-slate-400">Sinkronisasi data game...</span>
+        </div>
+      </div>
+    )
+  }
 
   // ── Waiting Room ──────────────────────────────────────────────────
   if (game.status === 'LOBBY') {

@@ -44,13 +44,19 @@ export function usePlayers(gameId: string, initialPlayers: Player[]): Player[] {
         },
         (payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> }) => {
           if (payload.eventType === 'INSERT') {
-            setPlayers((prev) => [...prev, payload.new as unknown as Player])
+            if (payload.new && (payload.new as any).id) {
+              setPlayers((prev) => [...prev, payload.new as unknown as Player])
+            }
           } else if (payload.eventType === 'UPDATE') {
-            setPlayers((prev) =>
-              prev.map((p) => (p.id === payload.new.id ? (payload.new as unknown as Player) : p))
-            )
+            if (payload.new && (payload.new as any).id) {
+              setPlayers((prev) =>
+                prev.map((p) => (p.id === (payload.new as any).id ? { ...p, ...(payload.new as any) } : p))
+              )
+            }
           } else if (payload.eventType === 'DELETE') {
-            setPlayers((prev) => prev.filter((p) => p.id !== payload.old.id))
+            if (payload.old && (payload.old as any).id) {
+              setPlayers((prev) => prev.filter((p) => p.id !== (payload.old as any).id))
+            }
           }
         }
       )
@@ -72,6 +78,6 @@ export function usePlayers(gameId: string, initialPlayers: Player[]): Player[] {
     }
   }, [gameId, fetchFreshPlayers])
 
-  // Sort by score descending
-  return [...players].sort((a, b) => b.score - a.score)
+  // Sort by score descending safely
+  return [...players].sort((a, b) => ((b && b.score) || 0) - ((a && a.score) || 0))
 }

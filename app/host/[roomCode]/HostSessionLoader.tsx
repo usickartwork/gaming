@@ -1,10 +1,60 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { HostDashboard } from '@/components/host/HostDashboard'
 import { LockIcon, ArrowRightIcon } from '@/components/shared/Icons'
 import type { Game, Player, Song, HostSession } from '@/lib/types'
+
+class HostErrorBoundary extends React.Component<
+  { children: React.ReactNode; roomCode: string },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: any) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('Host Dashboard Render Error:', error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-center text-white">
+          <div className="glass-panel p-8 rounded-3xl border border-rose-500/40 max-w-md space-y-4">
+            <h2 className="text-xl font-black text-rose-400">Terjadi Kendala Memuat Konsol Host</h2>
+            <p className="text-xs text-slate-400 font-mono bg-slate-900/80 p-3 rounded-xl break-all">
+              {this.state.error?.message || 'Gagal merender konsol'}
+            </p>
+            <div className="flex gap-3 justify-center pt-2">
+              <button
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    sessionStorage.removeItem(`cg-host-${this.props.roomCode}`)
+                    window.location.reload()
+                  }
+                }}
+                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+              >
+                Reset Sesi & Login Ulang
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95"
+              >
+                Muat Ulang Halaman
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 interface Props {
   game: Game
@@ -19,16 +69,21 @@ interface Props {
  */
 export function HostSessionLoader({ game, players, songs, roomCode }: Props) {
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
   const [hostSession, setHostSession] = useState<HostSession | null>(null)
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [verifying, setVerifying] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     const stored = sessionStorage.getItem(`cg-host-${roomCode}`)
     if (stored) {
       try {
-        setHostSession(JSON.parse(stored))
+        const parsed = JSON.parse(stored)
+        if (parsed && typeof parsed === 'object') {
+          setHostSession(parsed)
+        }
       } catch {
         // invalid storage
       }
@@ -114,12 +169,22 @@ export function HostSessionLoader({ game, players, songs, roomCode }: Props) {
     )
   }
 
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center text-slate-500 text-xs">
+        Memuat konsol...
+      </div>
+    )
+  }
+
   return (
-    <HostDashboard
-      initialGame={game}
-      initialPlayers={players}
-      songs={songs}
-      hostSession={hostSession}
-    />
+    <HostErrorBoundary roomCode={roomCode}>
+      <HostDashboard
+        initialGame={game}
+        initialPlayers={players}
+        songs={songs}
+        hostSession={hostSession}
+      />
+    </HostErrorBoundary>
   )
 }
