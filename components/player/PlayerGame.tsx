@@ -74,7 +74,6 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   // Real-time Sound & Visual Feedback for Correct vs Wrong answers
   // Single source of truth: each branch owns its own cleanup timer.
-  // No separate auto-dismiss effect to avoid conflicting parallel timers.
   useEffect(() => {
     // When game transitions to RESULT
     if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
@@ -86,12 +85,12 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         if (tournamentState?.lastSongOutcome === 'ALL_WRONG') {
           playWrongSound()
           setFeedbackAnim('wrong')
-          const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+          const t = setTimeout(() => setFeedbackAnim('none'), 800)
           return () => clearTimeout(t)
         } else {
           playCorrectFanfareSound()
           setFeedbackAnim('correct')
-          const t = setTimeout(() => setFeedbackAnim('none'), 2500)
+          const t = setTimeout(() => setFeedbackAnim('none'), 1000)
           return () => clearTimeout(t)
         }
       }
@@ -110,16 +109,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         prevAttemptRef.current = game.current_attempt
         playWrongSound()
         setFeedbackAnim('wrong')
-        const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+        const t = setTimeout(() => setFeedbackAnim('none'), 800)
         return () => clearTimeout(t)
       }
     }
 
-    // Close any popup when round resets to READY or DISABLED
-    if (game.buzz_state === 'READY' || game.buzz_state === 'DISABLED') {
-      if (prevBuzzStateRef.current === 'RESULT') {
-        setFeedbackAnim('none')
-      }
+    // Auto-close popup immediately whenever buzz_state transitions away from RESULT
+    if (prevBuzzStateRef.current === 'RESULT' && game.buzz_state !== 'RESULT') {
+      setFeedbackAnim('none')
     }
 
     prevBuzzStateRef.current = game.buzz_state

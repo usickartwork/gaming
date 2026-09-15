@@ -522,11 +522,11 @@ export function HostDashboard({
         if (isAllWrong) {
           playWrongSound()
           setFeedbackAnim('wrong')
-          setTimeout(() => setFeedbackAnim('none'), 1500)
+          setTimeout(() => setFeedbackAnim('none'), 800)
         } else {
           playCorrectFanfareSound()
           setFeedbackAnim('correct')
-          setTimeout(() => setFeedbackAnim('none'), 2000)
+          setTimeout(() => setFeedbackAnim('none'), 1000)
         }
       }, 350)
       prevBuzzStateRef.current = game.buzz_state
@@ -543,11 +543,16 @@ export function HostDashboard({
       const t = setTimeout(() => {
         playWrongSound()
         setFeedbackAnim('wrong')
-        setTimeout(() => setFeedbackAnim('none'), 1200)
+        setTimeout(() => setFeedbackAnim('none'), 800)
       }, 350)
       prevBuzzStateRef.current = game.buzz_state
       prevAttemptRef.current = game.current_attempt
       return () => clearTimeout(t)
+    }
+
+    // Auto-close popup immediately whenever buzz_state transitions away from RESULT
+    if (prevBuzzStateRef.current === 'RESULT' && game.buzz_state !== 'RESULT') {
+      setFeedbackAnim('none')
     }
 
     prevBuzzStateRef.current = game.buzz_state
