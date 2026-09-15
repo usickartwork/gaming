@@ -71,6 +71,12 @@ export function useGameState(gameId: string, initialGame: Game): Game {
         (payload: { payload: Record<string, any> }) => {
           const msg = payload?.payload
           if (!msg) return
+
+          // Dispatch custom event so UI components can react instantly to broadcast signals
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent(`game-broadcast:${gameId}`, { detail: msg }))
+          }
+
           if (msg.type === 'BUZZ_STATE') {
             setGame((prev) => ({
               ...prev,

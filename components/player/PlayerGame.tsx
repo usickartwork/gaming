@@ -43,6 +43,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const players = usePlayers(initialGame.id, initialPlayers)
 
   const [isBuzzing, setIsBuzzing] = useState(false)
+  const isBuzzingRef = useRef(false) // mirrors isBuzzing so effects can read it without re-subscribing
   const [localWinner, setLocalWinner] = useState<boolean | null>(null)
   const [localWinnerName, setLocalWinnerName] = useState<string | null>(null)
   const [revealedSong, setRevealedSong] = useState<{ title: string; artist: string } | null>(null)
@@ -159,6 +160,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (game.buzz_winner_id === null) {
       setLocalWinner(null)
       setLocalWinnerName(null)
+      isBuzzingRef.current = false
       setIsBuzzing(false)
     }
   }, [game.buzz_winner_id])
@@ -169,6 +171,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     if (game.buzz_state === 'READY' || game.buzz_state === 'DISABLED') {
       setLocalWinner(null)
       setLocalWinnerName(null)
+      isBuzzingRef.current = false
       setIsBuzzing(false)
     }
   }, [game.buzz_state])
@@ -177,17 +180,20 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   useEffect(() => {
     setLocalWinner(null)
     setLocalWinnerName(null)
+    isBuzzingRef.current = false
     setIsBuzzing(false)
     setLocalExcluded(false)
     iWasWinnerRef.current = false
     lastHandledResultKeyRef.current = null
   }, [game.current_song_id])
 
-  // Sync local winner state immediately when buzz_winner_id arrives from DB
+  // Sync local winner state immediately when buzz_winner_id arrives from DB / broadcast
   useEffect(() => {
     if (game.buzz_winner_id) {
       if (game.buzz_winner_id === session.playerId) {
-        setLocalWinner(true)
+        if (!isBuzzingRef.current) {
+          setLocalWinner(true)
+        }
       } else {
         setLocalWinner(false)
         const wp = players.find((p) => p.id === game.buzz_winner_id)
@@ -202,7 +208,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   // Mark ref when DB confirms or local optimistic confirms us as winner
   useEffect(() => {
-    if (game.buzz_winner_id === session.playerId || localWinner === true) {
+    if (localWinner === true || (game.buzz_winner_id === session.playerId && !isBuzzingRef.current)) {
       iWasWinnerRef.current = true
     }
   }, [game.buzz_winner_id, localWinner, session.playerId])
@@ -215,44 +221,39 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     }
   }, [game.buzz_state, game.buzz_winner_id, game.current_attempt])
 
-  // Listen directly to ultra-fast broadcast signals for instant exclusion and reset
+  // Listen directly to ultra-fast broadcast signals dispatched by useGameState
   useEffect(() => {
-    const supabase = getSupabaseBrowserClient()
-    const channel = supabase.channel(`player-actions:${initialGame.id}`, {
-      config: { broadcast: { self: true } },
-    })
+    const handleBroadcast = (e: Event) => {
+      const msg = (e as CustomEvent).detail
+      if (!msg) return
 
-    channel
-      .on('broadcast', { event: 'fast_buzz' }, (payload: { payload: Record<string, any> }) => {
-        const msg = payload?.payload
-        if (!msg) return
-
-        if (msg.type === 'HOST_ACTION') {
-          if (msg.action === 'ANSWER_RESULT' && msg.payload?.result === 'WRONG') {
-            if (msg.payload?.wrongPlayerId === session.playerId) {
-              // We answered wrong! Instantly exclude buzzer with 0ms delay!
-              setLocalExcluded(true)
-              iWasWinnerRef.current = false
-            }
-            if (msg.payload?.allWrong) {
-              setLocalExcluded(false)
-              iWasWinnerRef.current = false
-            }
-          } else if (msg.action === 'RESET_BUZZ') {
-            // Full reset from host — unlock everything instantly
-            setLocalExcluded(false)
-            setLocalWinner(null)
-            setLocalWinnerName(null)
-            setIsBuzzing(false)
+      if (msg.type === 'HOST_ACTION') {
+        if (msg.action === 'ANSWER_RESULT' && msg.payload?.result === 'WRONG') {
+          if (msg.payload?.wrongPlayerId === session.playerId) {
+            // We answered wrong! Instantly exclude buzzer with 0ms delay!
+            setLocalExcluded(true)
             iWasWinnerRef.current = false
-            setFeedbackAnim('none')
           }
+          if (msg.payload?.allWrong) {
+            setLocalExcluded(false)
+            iWasWinnerRef.current = false
+          }
+        } else if (msg.action === 'RESET_BUZZ') {
+          // Full reset from host — unlock everything instantly
+          setLocalExcluded(false)
+          setLocalWinner(null)
+          setLocalWinnerName(null)
+          isBuzzingRef.current = false
+          setIsBuzzing(false)
+          iWasWinnerRef.current = false
+          setFeedbackAnim('none')
         }
-      })
-      .subscribe()
+      }
+    }
 
+    window.addEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
     return () => {
-      supabase.removeChannel(channel)
+      window.removeEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
     }
   }, [initialGame.id, session.playerId])
 
@@ -260,10 +261,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
 
   const me = players.find((p) => p.id === session.playerId)
-  // isWinner is true when DB confirms it, or immediately when local confirmation arrives while DB is in-flight
+  // isWinner is true when DB confirms it, or immediately when local confirmation arrives
   const isWinner =
-    game.buzz_winner_id === session.playerId ||
-    (localWinner === true && (game.buzz_winner_id === null || game.buzz_winner_id === session.playerId))
+    localWinner === true ||
+    (!isBuzzing && game.buzz_winner_id === session.playerId && localWinner !== false)
   // isExcluded includes instant local state so button disables immediately without waiting for DB
   const isExcluded = Boolean((me && me.excluded_attempt !== null) || localExcluded)
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
@@ -334,6 +335,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const handleBuzz = async (): Promise<boolean> => {
     if (isBuzzing || game.buzz_state !== 'READY' || isExcluded) return false
     setIsBuzzing(true)
+    isBuzzingRef.current = true
+
+    // 0ms ultra-fast broadcast to Host and all players via WebSocket
+    broadcastFastBuzz(game.id, {
+      type: 'BUZZ_WINNER',
+      winnerId: session.playerId,
+      winnerName: session.playerName,
+    })
 
     try {
       const res = await fetch(`/api/admin/${game.room_code}/buzz`, {
@@ -347,29 +356,36 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       const data = await res.json()
       if (!res.ok) {
         console.error('Buzz rejected:', data?.error || res.status)
+        setLocalWinner(false)
+        iWasWinnerRef.current = false
         return false
       }
       if (data.winner === true) {
         // Authoritative lock confirmed by database row lock
         setLocalWinner(true)
+        iWasWinnerRef.current = true
         playDingSound()
-        // Broadcast immediately to host and all players via WebSocket
-        broadcastFastBuzz(game.id, {
-          type: 'BUZZ_WINNER',
-          winnerId: session.playerId,
-          winnerName: session.playerName,
-        })
         return true
       }
       // Another player won the lock
       setLocalWinner(false)
+      iWasWinnerRef.current = false
       const matched = players.find((p) => p.id === data.winnerId)
       setLocalWinnerName(data.winnerName || matched?.name || 'Pemain Lain')
+      // Correct the broadcast with actual DB winner
+      broadcastFastBuzz(game.id, {
+        type: 'BUZZ_WINNER',
+        winnerId: data.winnerId,
+        winnerName: data.winnerName || matched?.name || 'Pemain Lain',
+      })
       return false
     } catch (err) {
       console.error('Buzz error:', err)
+      setLocalWinner(false)
+      iWasWinnerRef.current = false
       return false
     } finally {
+      isBuzzingRef.current = false
       setIsBuzzing(false)
     }
   }
@@ -585,7 +601,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   }
 
   // ── LOCKED: Someone else won ────────────────────────────────────
-  if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner) {
+  if ((game.buzz_state === 'LOCKED' || game.buzz_state === 'ANSWERING') && !isWinner && !isBuzzing) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         {renderFeedbackOverlay()}

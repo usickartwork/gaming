@@ -75,7 +75,7 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
     )
   }
 
-  if (buzzState === 'LOCKED' || buzzState === 'RESULT') {
+  if ((buzzState === 'LOCKED' || buzzState === 'RESULT') && !isBuzzing) {
     return null
   }
 
