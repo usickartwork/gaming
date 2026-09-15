@@ -118,6 +118,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const lastWrongFeedbackTimeRef = useRef(0)
   // Deduplicate result feedback so it NEVER plays twice for the same song outcome
   const lastHandledResultKeyRef = useRef<string | null>(null)
+  const lastHandledWrongKeyRef = useRef<string | null>(null)
 
   // Sound & Visual Feedback fallback for reconnecting clients or delayed updates
   useEffect(() => {
@@ -154,6 +155,14 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       (prevBuzzStateRef.current === 'LOCKED' || prevBuzzStateRef.current === 'ANSWERING') &&
       game.current_attempt > prevAttemptRef.current
     ) {
+      const wrongKey = `${game.current_song_id || 'song'}_WRONG_${game.current_attempt}`
+      if (lastHandledWrongKeyRef.current === wrongKey) {
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
+        return
+      }
+      lastHandledWrongKeyRef.current = wrongKey
+
       const now = Date.now()
       if (now - lastWrongFeedbackTimeRef.current > 2000) {
         lastWrongFeedbackTimeRef.current = now
@@ -225,6 +234,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     setExcludedReason(null)
     iWasWinnerRef.current = false
     lastHandledResultKeyRef.current = null
+    lastHandledWrongKeyRef.current = null
   }, [game.current_song_id])
 
   // Sync local winner state immediately when buzz_winner_id arrives from DB / broadcast
@@ -288,6 +298,11 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             const isMe = wrongPlayerId === session.playerId || (wrongPlayerId == null && iWasWinnerRef.current)
             const winnerName = msg.payload?.winnerName || (isMe ? session.playerName : 'Pemain Lain')
             const allWrong = !!msg.payload?.allWrong
+            const attemptNum = msg.payload?.nextAttempt || (game.current_attempt + 1)
+            const wrongKey = `${game.current_song_id || 'song'}_WRONG_${attemptNum}`
+
+            if (lastHandledWrongKeyRef.current === wrongKey) return
+            lastHandledWrongKeyRef.current = wrongKey
 
             if (isMe) {
               // We answered wrong! Instantly exclude buzzer with 0ms delay!

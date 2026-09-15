@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useGameState, broadcastHostAction } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
-import { playDingSound, playCorrectFanfareSound, playWrongSound, playHostBuzzAlert } from '@/lib/audio'
+import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
 import {
   MicIcon,
   MusicIcon,
@@ -412,43 +412,11 @@ export function HostDashboard({
     }
   }
 
-  // Play sound when someone buzzes in on Host console (instant WebSocket + state fallback)
+  // Play sound when someone buzzes in
   const lastWinnerRef = useRef<string | null>(null)
-  const lastBuzzSoundTimeRef = useRef(0)
-
-  // Direct 0ms WebSocket event listener for incoming buzz
-  useEffect(() => {
-    const handleBroadcast = (e: Event) => {
-      const msg = (e as CustomEvent).detail
-      if (!msg) return
-      if (msg.type === 'BUZZ_WINNER' && msg.winnerId) {
-        const now = Date.now()
-        if (now - lastBuzzSoundTimeRef.current > 1000) {
-          lastBuzzSoundTimeRef.current = now
-          lastWinnerRef.current = msg.winnerId
-          playHostBuzzAlert()
-        }
-      } else if (msg.type === 'PLAYER_VIOLATION' && msg.playerId) {
-        setPlayerViolations((prev) => ({
-          ...prev,
-          [msg.playerId]: msg.count ?? (prev[msg.playerId] || 0) + 1,
-        }))
-      }
-    }
-    window.addEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
-    return () => {
-      window.removeEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
-    }
-  }, [initialGame.id])
-
-  // Fallback sync when buzz_winner_id updates
   useEffect(() => {
     if (game.buzz_winner_id && game.buzz_winner_id !== lastWinnerRef.current) {
-      const now = Date.now()
-      if (now - lastBuzzSoundTimeRef.current > 1000) {
-        lastBuzzSoundTimeRef.current = now
-        playHostBuzzAlert()
-      }
+      playDingSound()
     }
     lastWinnerRef.current = game.buzz_winner_id
   }, [game.buzz_winner_id])
@@ -544,27 +512,40 @@ export function HostDashboard({
   }
 
   // Track previous buzz state and attempt to detect answer evaluations in real-time
-  const prevBuzzStateRef = useRef(game?.buzz_state ?? 'DISABLED')
-  const prevAttemptRef = useRef(game?.current_attempt ?? 1)
-  const lastHostFeedbackTimeRef = useRef(0)
+  const prevBuzzStateRef = useRef(game.buzz_state)
+  const prevAttemptRef = useRef(game.current_attempt)
+  const lastHostResultKeyRef = useRef<string | null>(null)
+  const lastHostWrongKeyRef = useRef<string | null>(null)
 
-  // Synchronized sound & visual feedback fallback on Host for external sync
+  // Reset feedback keys when song changes
+  useEffect(() => {
+    lastHostResultKeyRef.current = null
+    lastHostWrongKeyRef.current = null
+  }, [game.current_song_id])
+
+  // Synchronized sound & visual feedback on Host
+  // Triggers ONLY after real-time update arrives from server if not already triggered at 0ms
   useEffect(() => {
     // When answer is evaluated as CORRECT or all failed (game transitions to RESULT)
-    if (game?.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
-      const now = Date.now()
-      if (now - lastHostFeedbackTimeRef.current > 2000) {
-        lastHostFeedbackTimeRef.current = now
-        const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
-        if (isAllWrong) {
-          playWrongSound()
-          setFeedbackAnim('wrong')
-          setTimeout(() => setFeedbackAnim('none'), 800)
-        } else {
-          playCorrectFanfareSound()
-          setFeedbackAnim('correct')
-          setTimeout(() => setFeedbackAnim('none'), 1000)
-        }
+    if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
+      const outcome = tournamentState?.lastSongOutcome
+      const resultKey = `${game.current_song_id || 'song'}_${outcome || 'CORRECT'}`
+      if (lastHostResultKeyRef.current === resultKey) {
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
+        return
+      }
+      lastHostResultKeyRef.current = resultKey
+
+      const isAllWrong = outcome === 'ALL_WRONG'
+      if (isAllWrong) {
+        playWrongSound()
+        setFeedbackAnim('wrong')
+        setTimeout(() => setFeedbackAnim('none'), 800)
+      } else {
+        playCorrectFanfareSound()
+        setFeedbackAnim('correct')
+        setTimeout(() => setFeedbackAnim('none'), 1000)
       }
       prevBuzzStateRef.current = game.buzz_state
       prevAttemptRef.current = game.current_attempt
@@ -577,13 +558,17 @@ export function HostDashboard({
       (prevBuzzStateRef.current === 'LOCKED' || prevBuzzStateRef.current === 'ANSWERING') &&
       game.current_attempt > prevAttemptRef.current
     ) {
-      const now = Date.now()
-      if (now - lastHostFeedbackTimeRef.current > 2000) {
-        lastHostFeedbackTimeRef.current = now
-        playWrongSound()
-        setFeedbackAnim('wrong')
-        setTimeout(() => setFeedbackAnim('none'), 800)
+      const wrongKey = `${game.current_song_id || 'song'}_WRONG_${game.current_attempt}`
+      if (lastHostWrongKeyRef.current === wrongKey) {
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
+        return
       }
+      lastHostWrongKeyRef.current = wrongKey
+
+      playWrongSound()
+      setFeedbackAnim('wrong')
+      setTimeout(() => setFeedbackAnim('none'), 800)
       prevBuzzStateRef.current = game.buzz_state
       prevAttemptRef.current = game.current_attempt
       return
@@ -596,7 +581,7 @@ export function HostDashboard({
 
     prevBuzzStateRef.current = game.buzz_state
     prevAttemptRef.current = game.current_attempt
-  }, [game.buzz_state, game.current_attempt, tournamentState?.lastSongOutcome])
+  }, [game.buzz_state, game.current_attempt, game.current_song_id, tournamentState?.lastSongOutcome])
 
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
@@ -604,26 +589,37 @@ export function HostDashboard({
       const currentSongData = currentSong ? { title: currentSong.title, artist: currentSong.artist } : null
       const evaluatedPlayerId = game.buzz_winner_id
 
-      lastHostFeedbackTimeRef.current = Date.now()
-
-      // Instant 0ms sound & animation on Host Console
       if (result === 'CORRECT') {
+        const resultKey = `${game.current_song_id || 'song'}_CORRECT`
+        lastHostResultKeyRef.current = resultKey
+
         playCorrectFanfareSound()
         setFeedbackAnim('correct')
         setTimeout(() => setFeedbackAnim('none'), 1000)
 
         // Instant broadcast to all players (0ms WebSocket)
         broadcastHostAction(game.id, 'ANSWER_RESULT', {
-          result,
+          result: 'CORRECT',
           winnerId: game.buzz_winner_id,
           winnerName: currentBuzzWinner?.name || 'Pemain Lain',
           revealedSong: currentSongData,
         })
       } else {
+        const nextAttemptNum = (game.current_attempt || 1) + 1
+        const wrongKey = `${game.current_song_id || 'song'}_WRONG_${nextAttemptNum}`
+        lastHostWrongKeyRef.current = wrongKey
+
         playWrongSound()
         setFeedbackAnim('wrong')
         setTimeout(() => setFeedbackAnim('none'), 800)
-        // Wait for DB update before broadcasting buzzer reopening so DB is 100% READY
+
+        // Instant broadcast to all players (0ms WebSocket) — barengan seperti CORRECT!
+        broadcastHostAction(game.id, 'ANSWER_RESULT', {
+          result: 'WRONG',
+          wrongPlayerId: evaluatedPlayerId,
+          winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+          nextAttempt: nextAttemptNum,
+        })
       }
 
       setIsLoading(true)
@@ -638,8 +634,7 @@ export function HostDashboard({
         })
         const data = await res.json()
 
-        // Server confirmed resolution: DB is now 100% updated and exclusions saved!
-        // Now broadcast to players to open the buzzer safely
+        // If special resolution (ALL_WRONG or DUEL_TURN_PASSED), broadcast the special resolution
         if (res.ok && result === 'WRONG') {
           if (data.allWrong) {
             broadcastHostAction(game.id, 'ANSWER_RESULT', {
@@ -658,21 +653,13 @@ export function HostDashboard({
               wrongPlayerId: data.wrongPlayerId || evaluatedPlayerId,
               winnerName: currentBuzzWinner?.name || 'Pemain Lain',
             })
-          } else {
-            broadcastHostAction(game.id, 'ANSWER_RESULT', {
-              result: 'WRONG',
-              wrongPlayerId: data.wrongPlayerId || evaluatedPlayerId,
-              winnerName: currentBuzzWinner?.name || 'Pemain Lain',
-              nextAttempt: data.nextAttempt ?? null,
-              revealedSong: currentSongData,
-            })
           }
         }
       } finally {
         setIsLoading(false)
       }
     },
-    [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, players, currentSong]
+    [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, game.current_attempt, game.current_song_id, players, currentSong]
   )
 
   if (!game || !game.room_code) {
