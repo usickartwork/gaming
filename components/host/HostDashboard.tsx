@@ -556,26 +556,18 @@ export function HostDashboard({
 
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
-      // 1. Instant optimistic feedback & sub-30ms broadcast
+      // 1. Instant broadcast ke semua player (optimistic) — tanpa sound/anim di host dulu
+      // Host sound & anim akan triggered oleh useEffect reaktif terhadap DB (single source of truth)
       const currentBuzzWinner = players.find((p) => p.id === game.buzz_winner_id)
       broadcastHostAction(game.id, 'ANSWER_RESULT', {
         result,
         winnerId: game.buzz_winner_id,
         winnerName: currentBuzzWinner?.name || 'Pemain Lain',
       })
-      if (result === 'CORRECT') {
-        playCorrectFanfareSound()
-        setFeedbackAnim('correct')
-        setTimeout(() => setFeedbackAnim('none'), 2000)
-      } else {
-        playWrongSound()
-        setFeedbackAnim('wrong')
-        setTimeout(() => setFeedbackAnim('none'), 1200)
-      }
 
       setIsLoading(true)
       try {
-        await fetch(`/api/admin/${game.room_code}/answer`, {
+        const res = await fetch(`/api/admin/${game.room_code}/answer`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -583,11 +575,26 @@ export function HostDashboard({
           },
           body: JSON.stringify({ result }),
         })
+        const data = await res.json()
+
+        // 2. Setelah server konfirmasi, broadcast ulang dengan info lengkap (allWrong, duelTurnPassed)
+        // Ini memastikan player menerima flag yang benar tanpa harus tunggu postgres_changes
+        if (res.ok && result === 'WRONG') {
+          broadcastHostAction(game.id, 'ANSWER_RESULT', {
+            result,
+            winnerId: data.duelTurnPassed ? data.nextPlayerId : null,
+            winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+            allWrong: !!data.allWrong,
+            duelTurnPassed: !!data.duelTurnPassed,
+            nextPlayerId: data.nextPlayerId ?? null,
+            nextAttempt: data.nextAttempt ?? null,
+          })
+        }
       } finally {
         setIsLoading(false)
       }
     },
-    [game.room_code, hostSession.hostPassword, game.id]
+    [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, players]
   )
 
   // ── Waiting Room ──────────────────────────────────────────────────

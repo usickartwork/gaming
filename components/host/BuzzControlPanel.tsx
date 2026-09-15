@@ -81,8 +81,8 @@ export function BuzzControlPanel({
           </button>
           <button
             onClick={onResetBuzz}
-            disabled={isLoading}
-            className="bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-bold py-3.5 px-4 rounded-2xl border border-white/10 transition-all active:scale-95 text-xs sm:text-sm flex items-center justify-center"
+            disabled={isLoading || buzzState === 'READY' || buzzState === 'DISABLED'}
+            className="bg-slate-900 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed text-slate-400 hover:text-white font-bold py-3.5 px-4 rounded-2xl border border-white/10 transition-all active:scale-95 text-xs sm:text-sm flex items-center justify-center"
             title="Reset ulang ke READY"
           >
             <RefreshIcon size={14} />

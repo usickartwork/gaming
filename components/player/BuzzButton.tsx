@@ -53,6 +53,7 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return
+    e.preventDefault() // Prevent synthetic click event from firing after pointerdown on mobile
     triggerBuzz()
   }
 

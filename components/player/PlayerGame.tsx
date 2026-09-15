@@ -73,23 +73,31 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const lastWrongFeedbackTimeRef = useRef(0)
 
   // Real-time Sound & Visual Feedback for Correct vs Wrong answers
+  // Single source of truth: each branch owns its own cleanup timer.
+  // No separate auto-dismiss effect to avoid conflicting parallel timers.
   useEffect(() => {
     // When game transitions to RESULT
     if (game.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
       const now = Date.now()
       if (now - lastResultFeedbackTimeRef.current > 2000) {
         lastResultFeedbackTimeRef.current = now
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
         if (tournamentState?.lastSongOutcome === 'ALL_WRONG') {
           playWrongSound()
           setFeedbackAnim('wrong')
+          const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+          return () => clearTimeout(t)
         } else {
           playCorrectFanfareSound()
           setFeedbackAnim('correct')
+          const t = setTimeout(() => setFeedbackAnim('none'), 2500)
+          return () => clearTimeout(t)
         }
       }
     }
 
-    // When attempt increases after locked/answering state (Answer evaluated as WRONG!)
+    // When attempt increases after locked/answering state (Answer evaluated as WRONG — buzzer re-opened)
     if (
       game.buzz_state === 'READY' &&
       (prevBuzzStateRef.current === 'LOCKED' || prevBuzzStateRef.current === 'ANSWERING') &&
@@ -98,8 +106,12 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       const now = Date.now()
       if (now - lastWrongFeedbackTimeRef.current > 1500) {
         lastWrongFeedbackTimeRef.current = now
+        prevBuzzStateRef.current = game.buzz_state
+        prevAttemptRef.current = game.current_attempt
         playWrongSound()
         setFeedbackAnim('wrong')
+        const t = setTimeout(() => setFeedbackAnim('none'), 2000)
+        return () => clearTimeout(t)
       }
     }
 
@@ -113,16 +125,6 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     prevBuzzStateRef.current = game.buzz_state
     prevAttemptRef.current = game.current_attempt
   }, [game.buzz_state, game.current_attempt, tournamentState?.lastSongOutcome])
-
-  // Dedicated Auto-Dismiss Timer: guarantees popup overlay always disappears (never stuck!)
-  useEffect(() => {
-    if (feedbackAnim === 'none') return
-    const duration = feedbackAnim === 'correct' ? 1800 : 1200
-    const timer = setTimeout(() => {
-      setFeedbackAnim('none')
-    }, duration)
-    return () => clearTimeout(timer)
-  }, [feedbackAnim])
 
   // Fetch revealed song details when game enters RESULT state
   useEffect(() => {
@@ -160,6 +162,13 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       setIsBuzzing(false)
     }
   }, [game.buzz_state])
+
+  // Reset local state when the song changes so state from previous song doesn't bleed through
+  useEffect(() => {
+    setLocalWinner(null)
+    setLocalWinnerName(null)
+    setIsBuzzing(false)
+  }, [game.current_song_id])
 
   // Sync local winner state immediately when buzz_winner_id arrives from DB
   useEffect(() => {
@@ -250,6 +259,8 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   const handleBuzz = async (): Promise<boolean> => {
     if (isBuzzing) return false
+    // Guard: jangan kirim request jika buzzer belum READY (cegah race condition & request percuma)
+    if (game.buzz_state !== 'READY') return false
     setIsBuzzing(true)
 
     try {
