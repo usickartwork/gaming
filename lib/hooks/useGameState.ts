@@ -145,6 +145,16 @@ export function useGameState(gameId: string, initialGame: Game): Game {
                     }
                   }
                   break
+                case 'ALL_WRONG':
+                  next.buzz_state = 'RESULT'
+                  next.buzz_winner_id = null
+                  next.current_attempt = 1
+                  break
+                case 'DUEL_TURN_PASSED':
+                  next.buzz_state = 'LOCKED'
+                  next.buzz_winner_id = msg.payload?.nextPlayerId ?? null
+                  next.current_attempt = 2
+                  break
               }
               return next
             })

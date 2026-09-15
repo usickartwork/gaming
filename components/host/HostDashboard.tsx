@@ -513,15 +513,16 @@ export function HostDashboard({
   // Track previous buzz state and attempt to detect answer evaluations in real-time
   const prevBuzzStateRef = useRef(game?.buzz_state ?? 'DISABLED')
   const prevAttemptRef = useRef(game?.current_attempt ?? 1)
+  const lastHostFeedbackTimeRef = useRef(0)
 
-  // Synchronized sound & visual feedback on Host
-  // Triggers ONLY after real-time update arrives from server and gives player screen a slight head-start (350ms)
-  // so the player's phone animation has already appeared, completely eliminating audio spoilers.
+  // Synchronized sound & visual feedback fallback on Host for external sync
   useEffect(() => {
     // When answer is evaluated as CORRECT or all failed (game transitions to RESULT)
     if (game?.buzz_state === 'RESULT' && prevBuzzStateRef.current !== 'RESULT') {
-      const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
-      const t = setTimeout(() => {
+      const now = Date.now()
+      if (now - lastHostFeedbackTimeRef.current > 2000) {
+        lastHostFeedbackTimeRef.current = now
+        const isAllWrong = tournamentState?.lastSongOutcome === 'ALL_WRONG'
         if (isAllWrong) {
           playWrongSound()
           setFeedbackAnim('wrong')
@@ -531,10 +532,10 @@ export function HostDashboard({
           setFeedbackAnim('correct')
           setTimeout(() => setFeedbackAnim('none'), 1000)
         }
-      }, 350)
+      }
       prevBuzzStateRef.current = game.buzz_state
       prevAttemptRef.current = game.current_attempt
-      return () => clearTimeout(t)
+      return
     }
 
     // When answer is evaluated as WRONG (attempt increments and state returns to READY)
@@ -543,14 +544,16 @@ export function HostDashboard({
       (prevBuzzStateRef.current === 'LOCKED' || prevBuzzStateRef.current === 'ANSWERING') &&
       game.current_attempt > prevAttemptRef.current
     ) {
-      const t = setTimeout(() => {
+      const now = Date.now()
+      if (now - lastHostFeedbackTimeRef.current > 2000) {
+        lastHostFeedbackTimeRef.current = now
         playWrongSound()
         setFeedbackAnim('wrong')
         setTimeout(() => setFeedbackAnim('none'), 800)
-      }, 350)
+      }
       prevBuzzStateRef.current = game.buzz_state
       prevAttemptRef.current = game.current_attempt
-      return () => clearTimeout(t)
+      return
     }
 
     // Auto-close popup immediately whenever buzz_state transitions away from RESULT
@@ -565,15 +568,34 @@ export function HostDashboard({
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
       const currentBuzzWinner = players.find((p) => p.id === game.buzz_winner_id)
+      const currentSongData = currentSong ? { title: currentSong.title, artist: currentSong.artist } : null
 
-      // CORRECT: broadcast instantly — always safe, no ambiguity
-      // WRONG: don't broadcast yet — must wait for server to know if it's ALL_WRONG,
-      //        regular WRONG, or duel-turn-passed. One accurate broadcast > two conflicting ones.
+      lastHostFeedbackTimeRef.current = Date.now()
+
+      // Instant 0ms sound & animation on Host Console
       if (result === 'CORRECT') {
+        playCorrectFanfareSound()
+        setFeedbackAnim('correct')
+        setTimeout(() => setFeedbackAnim('none'), 1000)
+
+        // Instant broadcast to all players (0ms WebSocket)
         broadcastHostAction(game.id, 'ANSWER_RESULT', {
           result,
           winnerId: game.buzz_winner_id,
           winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+          revealedSong: currentSongData,
+        })
+      } else {
+        playWrongSound()
+        setFeedbackAnim('wrong')
+        setTimeout(() => setFeedbackAnim('none'), 800)
+
+        // Instant broadcast to all players (0ms WebSocket)
+        broadcastHostAction(game.id, 'ANSWER_RESULT', {
+          result,
+          wrongPlayerId: game.buzz_winner_id,
+          winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+          revealedSong: currentSongData,
         })
       }
 
@@ -589,24 +611,24 @@ export function HostDashboard({
         })
         const data = await res.json()
 
-        // After server confirms WRONG, broadcast ONE accurate signal with full context
+        // Server confirmed resolution: broadcast outcome context if special state
         if (res.ok && result === 'WRONG') {
-          broadcastHostAction(game.id, 'ANSWER_RESULT', {
-            result,
-            winnerId: data.duelTurnPassed ? data.nextPlayerId : null,
-            winnerName: currentBuzzWinner?.name || 'Pemain Lain',
-            allWrong: !!data.allWrong,
-            duelTurnPassed: !!data.duelTurnPassed,
-            nextPlayerId: data.nextPlayerId ?? null,
-            nextAttempt: data.nextAttempt ?? null,
-            wrongPlayerId: game.buzz_winner_id,
-          })
+          if (data.allWrong) {
+            broadcastHostAction(game.id, 'ALL_WRONG', {
+              allWrong: true,
+              revealedSong: currentSongData,
+            })
+          } else if (data.duelTurnPassed) {
+            broadcastHostAction(game.id, 'DUEL_TURN_PASSED', {
+              nextPlayerId: data.nextPlayerId ?? null,
+            })
+          }
         }
       } finally {
         setIsLoading(false)
       }
     },
-    [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, players]
+    [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, players, currentSong]
   )
 
   if (!game || !game.room_code) {

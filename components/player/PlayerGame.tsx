@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import { useGameState, broadcastFastBuzz } from '@/lib/hooks/useGameState'
@@ -48,7 +48,45 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const [localWinnerName, setLocalWinnerName] = useState<string | null>(null)
   const [revealedSong, setRevealedSong] = useState<{ title: string; artist: string } | null>(null)
   const [loadingSong, setLoadingSong] = useState(false)
-  const [feedbackAnim, setFeedbackAnim] = useState<'none' | 'correct' | 'wrong'>('none')
+  const [feedbackData, setFeedbackData] = useState<{
+    type: 'none' | 'correct' | 'wrong'
+    isMe: boolean
+    winnerName: string
+    isAllWrong?: boolean
+  }>({ type: 'none', isMe: false, winnerName: '' })
+  const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const closeFeedback = useCallback(() => {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current)
+      feedbackTimerRef.current = null
+    }
+    setFeedbackData((prev) => ({ ...prev, type: 'none' }))
+  }, [])
+
+  const triggerFeedback = useCallback(
+    (type: 'correct' | 'wrong', isMe: boolean, winnerName: string, isAllWrong?: boolean) => {
+      if (feedbackTimerRef.current) {
+        clearTimeout(feedbackTimerRef.current)
+        feedbackTimerRef.current = null
+      }
+
+      setFeedbackData({ type, isMe, winnerName, isAllWrong })
+
+      if (type === 'correct') {
+        playCorrectFanfareSound()
+      } else {
+        playWrongSound()
+      }
+
+      const duration = type === 'correct' ? 1200 : 900
+      feedbackTimerRef.current = setTimeout(() => {
+        setFeedbackData((prev) => ({ ...prev, type: 'none' }))
+        feedbackTimerRef.current = null
+      }, duration)
+    },
+    []
+  )
   const [showBracketModal, setShowBracketModal] = useState(false)
 
   const gameMode = getGameMode(game)
@@ -76,36 +114,31 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   // Deduplicate result feedback so it NEVER plays twice for the same song outcome
   const lastHandledResultKeyRef = useRef<string | null>(null)
 
-  // Real-time Sound & Visual Feedback for Correct vs Wrong answers
+  // Sound & Visual Feedback fallback for reconnecting clients or delayed updates
   useEffect(() => {
-    // RESULT state: only fire when lastSongOutcome is actually populated
+    // RESULT state: fallback if not already handled via instant WebSocket broadcast
     if (game.buzz_state === 'RESULT') {
       const outcome = tournamentState?.lastSongOutcome
-      if (!outcome) return // Data not ready yet, skip
+      if (!outcome) return
 
       const resultKey = `${game.current_song_id || 'song'}_${outcome}`
-      if (lastHandledResultKeyRef.current === resultKey) {
-        // Already shown for this outcome on this song — strictly ignore duplicate triggers
-        return
-      }
+      if (lastHandledResultKeyRef.current === resultKey) return
 
       const now = Date.now()
-      if (now - lastResultFeedbackTimeRef.current > 1500) {
+      if (now - lastResultFeedbackTimeRef.current > 2000) {
         lastResultFeedbackTimeRef.current = now
         lastHandledResultKeyRef.current = resultKey
         prevBuzzStateRef.current = game.buzz_state
         prevAttemptRef.current = game.current_attempt
 
+        const isMe = localWinner === true || game.buzz_winner_id === session.playerId
+        const wp = players.find((p) => p.id === game.buzz_winner_id)
+        const winnerName = lastWinnerPlayerRef.current || wp?.name || localWinnerName || 'Pemain Lain'
+
         if (outcome === 'ALL_WRONG') {
-          playWrongSound()
-          setFeedbackAnim('wrong')
-          const t = setTimeout(() => setFeedbackAnim('none'), 800)
-          return () => clearTimeout(t)
+          triggerFeedback('wrong', false, winnerName, true)
         } else {
-          playCorrectFanfareSound()
-          setFeedbackAnim('correct')
-          const t = setTimeout(() => setFeedbackAnim('none'), 1000)
-          return () => clearTimeout(t)
+          triggerFeedback('correct', isMe, winnerName, false)
         }
       }
     }
@@ -117,25 +150,26 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       game.current_attempt > prevAttemptRef.current
     ) {
       const now = Date.now()
-      if (now - lastWrongFeedbackTimeRef.current > 1500) {
+      if (now - lastWrongFeedbackTimeRef.current > 2000) {
         lastWrongFeedbackTimeRef.current = now
         prevBuzzStateRef.current = game.buzz_state
         prevAttemptRef.current = game.current_attempt
-        playWrongSound()
-        setFeedbackAnim('wrong')
-        const t = setTimeout(() => setFeedbackAnim('none'), 800)
-        return () => clearTimeout(t)
+
+        const isMe = localWinner === true || game.buzz_winner_id === session.playerId
+        const wp = players.find((p) => p.id === game.buzz_winner_id)
+        const winnerName = lastWinnerPlayerRef.current || wp?.name || localWinnerName || 'Pemain Lain'
+        triggerFeedback('wrong', isMe, winnerName, false)
       }
     }
 
     // Auto-close popup immediately whenever buzz_state transitions away from RESULT
     if (prevBuzzStateRef.current === 'RESULT' && game.buzz_state !== 'RESULT') {
-      setFeedbackAnim('none')
+      closeFeedback()
     }
 
     prevBuzzStateRef.current = game.buzz_state
     prevAttemptRef.current = game.current_attempt
-  }, [game.buzz_state, game.current_attempt, game.current_song_id, tournamentState?.lastSongOutcome])
+  }, [game.buzz_state, game.current_attempt, game.current_song_id, tournamentState?.lastSongOutcome, triggerFeedback, closeFeedback, localWinner, game.buzz_winner_id, session.playerId, players, localWinnerName])
 
   // Fetch revealed song details when game enters RESULT state
   useEffect(() => {
@@ -228,15 +262,51 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       if (!msg) return
 
       if (msg.type === 'HOST_ACTION') {
-        if (msg.action === 'ANSWER_RESULT' && msg.payload?.result === 'WRONG') {
-          if (msg.payload?.wrongPlayerId === session.playerId) {
-            // We answered wrong! Instantly exclude buzzer with 0ms delay!
-            setLocalExcluded(true)
-            iWasWinnerRef.current = false
+        if (msg.action === 'ANSWER_RESULT') {
+          const isCorrect = msg.payload?.result === 'CORRECT'
+          const wrongPlayerId = msg.payload?.wrongPlayerId
+
+          if (isCorrect) {
+            const isMe = msg.payload?.winnerId === session.playerId || localWinner === true
+            const winnerName = msg.payload?.winnerName || (isMe ? session.playerName : 'Pemain Lain')
+            lastHandledResultKeyRef.current = `${game.current_song_id || 'song'}_CORRECT`
+            lastResultFeedbackTimeRef.current = Date.now()
+
+            triggerFeedback('correct', isMe, winnerName, false)
+
+            if (msg.payload?.revealedSong) {
+              setRevealedSong(msg.payload.revealedSong)
+            }
+          } else {
+            const isMe = wrongPlayerId === session.playerId
+            const winnerName = msg.payload?.winnerName || (isMe ? session.playerName : 'Pemain Lain')
+            const allWrong = !!msg.payload?.allWrong
+
+            if (isMe) {
+              // We answered wrong! Instantly exclude buzzer with 0ms delay!
+              setLocalExcluded(true)
+              iWasWinnerRef.current = false
+            }
+
+            if (allWrong) {
+              setLocalExcluded(false)
+              iWasWinnerRef.current = false
+              lastHandledResultKeyRef.current = `${game.current_song_id || 'song'}_ALL_WRONG`
+            }
+
+            lastWrongFeedbackTimeRef.current = Date.now()
+            triggerFeedback('wrong', isMe, winnerName, allWrong)
+
+            if (msg.payload?.revealedSong) {
+              setRevealedSong(msg.payload.revealedSong)
+            }
           }
-          if (msg.payload?.allWrong) {
-            setLocalExcluded(false)
-            iWasWinnerRef.current = false
+        } else if (msg.action === 'ALL_WRONG') {
+          setLocalExcluded(false)
+          iWasWinnerRef.current = false
+          lastHandledResultKeyRef.current = `${game.current_song_id || 'song'}_ALL_WRONG`
+          if (msg.payload?.revealedSong) {
+            setRevealedSong(msg.payload.revealedSong)
           }
         } else if (msg.action === 'RESET_BUZZ') {
           // Full reset from host — unlock everything instantly
@@ -246,7 +316,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           isBuzzingRef.current = false
           setIsBuzzing(false)
           iWasWinnerRef.current = false
-          setFeedbackAnim('none')
+          closeFeedback()
+        } else if (msg.action === 'NEXT_SONG') {
+          closeFeedback()
+          setRevealedSong(null)
         }
       }
     }
@@ -255,7 +328,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return () => {
       window.removeEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
     }
-  }, [initialGame.id, session.playerId])
+  }, [initialGame.id, session.playerId, session.playerName, game.current_song_id, localWinner, triggerFeedback, closeFeedback])
 
   // Track online presence
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
@@ -392,16 +465,15 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   // ── Dedicated High-Energy Feedback Overlay (Correct / Wrong) ───
   const renderFeedbackOverlay = () => {
-    if (feedbackAnim === 'none') return null
+    if (feedbackData.type === 'none') return null
 
-    const isMe = localWinner === true || game.buzz_winner_id === session.playerId
-    const winnerName = lastWinnerPlayerRef.current || buzzWinnerPlayer?.name || localWinnerName || 'Pemain Lain'
+    const { isMe, winnerName, isAllWrong } = feedbackData
 
-    if (feedbackAnim === 'correct') {
+    if (feedbackData.type === 'correct') {
       return (
         <div
-          onClick={() => setFeedbackAnim('none')}
-          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none cursor-pointer"
+          onClick={closeFeedback}
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-150 select-none cursor-pointer"
         >
           <div className="flex flex-col items-center text-center space-y-4 max-w-xs animate-pop-in">
             {/* Glowing Emerald Dome & Sparkles */}
@@ -432,7 +504,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
                   : `${winnerName} berhasil menebak lagu ini!`}
               </p>
               <span className="text-[11px] text-slate-400/80 font-medium block pt-1">
-                (Ketuk layar untuk langsung melihat skor)
+                (Ketuk layar untuk menutup)
               </span>
             </div>
           </div>
@@ -440,12 +512,11 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       )
     }
 
-    if (feedbackAnim === 'wrong') {
-      const iWasWrong = isExcluded || (isMe && prevBuzzStateRef.current === 'LOCKED')
+    if (feedbackData.type === 'wrong') {
       return (
         <div
-          onClick={() => setFeedbackAnim('none')}
-          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 select-none cursor-pointer"
+          onClick={closeFeedback}
+          className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-150 select-none cursor-pointer"
         >
           <div className="flex flex-col items-center text-center space-y-4 max-w-xs animate-shake">
             {/* Glowing Red Rose Dome */}
@@ -465,13 +536,22 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
                 JAWABAN SALAH!
               </span>
               <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
-                {iWasWrong ? 'KAMU SALAH!' : 'KURANG TEPAT!'}
+                {isAllWrong
+                  ? 'TIDAK TERTEBAK!'
+                  : isMe
+                  ? 'KAMU SALAH!'
+                  : 'KURANG TEPAT!'}
               </h2>
               <p className="text-rose-300 font-bold text-sm">
-                {iWasWrong
+                {isAllWrong
+                  ? 'Tidak ada yang berhasil menebak lagu ini.'
+                  : isMe
                   ? 'Poin dikurangi & kesempatanmu hangus untuk lagu ini.'
                   : `${winnerName} salah jawab! Buzzer dibuka kembali, siap-siap!`}
               </p>
+              <span className="text-[11px] text-slate-400/80 font-medium block pt-1">
+                (Ketuk layar untuk menutup)
+              </span>
             </div>
           </div>
         </div>
@@ -957,9 +1037,9 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   return (
     <div
       className={`min-h-screen flex flex-col justify-between p-4 sm:p-6 select-none relative overflow-hidden transition-all ${
-        feedbackAnim === 'wrong'
+        feedbackData.type === 'wrong'
           ? 'animate-shake animate-flash-red'
-          : feedbackAnim === 'correct'
+          : feedbackData.type === 'correct'
           ? 'animate-flash-green'
           : ''
       }`}
@@ -974,7 +1054,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       />
 
       {/* Wrong Answer temporary alert banner */}
-      {feedbackAnim === 'wrong' && (
+      {feedbackData.type === 'wrong' && !feedbackData.isAllWrong && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-rose-600/90 border border-rose-400/50 text-white font-black text-xs uppercase tracking-wider shadow-2xl shadow-rose-600/40 animate-bounce">
           Jawaban Salah! Kesempatan Dibuka Kembali
         </div>
