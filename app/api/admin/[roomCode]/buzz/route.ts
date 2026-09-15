@@ -101,6 +101,12 @@ export async function POST(
 
     // If buzzer is already locked and this player is already the winner, return immediately
     if (game.buzz_state === 'LOCKED' && game.buzz_winner_id === playerId) {
+      if (player.excluded_attempt !== null) {
+        return NextResponse.json(
+          { error: 'Anda sudah menjawab salah untuk lagu ini.' },
+          { status: 403 }
+        )
+      }
       return NextResponse.json({
         winner: true,
         winnerId: playerId,
@@ -137,26 +143,61 @@ export async function POST(
     // Query the confirmed winner to show on this player's screen
     const { data: freshGame } = await supabase
       .from('games')
-      .select('buzz_winner_id')
+      .select('buzz_winner_id, buzz_state')
       .eq('id', game.id)
       .single()
 
-    const winnerId = freshGame?.buzz_winner_id || game.buzz_winner_id
+    let winnerId = freshGame?.buzz_winner_id || game.buzz_winner_id
     let winnerName = 'Pemain Lain'
 
     if (winnerId) {
       const { data: wp } = await supabase
         .from('players')
-        .select('name')
+        .select('name, excluded_attempt')
         .eq('id', winnerId)
         .single()
-      if (wp?.name) winnerName = wp.name
+
+      // If the winner in DB is actually excluded for this song, it's stale from a previous attempt!
+      if (wp && wp.excluded_attempt !== null) {
+        // Clear stale winner from DB and reopen buzzer to READY
+        await supabase
+          .from('games')
+          .update({
+            buzz_state: 'READY',
+            buzz_winner_id: null,
+          })
+          .eq('id', game.id)
+
+        // Try locking for this eligible player again
+        const { data: retryLock } = await supabase
+          .from('games')
+          .update({
+            buzz_state: 'LOCKED',
+            buzz_winner_id: playerId,
+          })
+          .eq('id', game.id)
+          .eq('buzz_state', 'READY')
+          .is('buzz_winner_id', null)
+          .select('buzz_winner_id')
+          .maybeSingle()
+
+        if (retryLock?.buzz_winner_id === playerId) {
+          return NextResponse.json({
+            winner: true,
+            winnerId: playerId,
+            winnerName: player.name,
+          })
+        }
+        winnerId = null
+      } else if (wp?.name) {
+        winnerName = wp.name
+      }
     }
 
     return NextResponse.json({
       winner: false,
-      winnerId,
-      winnerName,
+      winnerId: winnerId ?? null,
+      winnerName: winnerId ? winnerName : 'Pemain Lain',
     })
   } catch (err) {
     console.error('POST /api/admin/[roomCode]/buzz error:', err)

@@ -602,6 +602,7 @@ export function HostDashboard({
     async (result: 'CORRECT' | 'WRONG') => {
       const currentBuzzWinner = players.find((p) => p.id === game.buzz_winner_id)
       const currentSongData = currentSong ? { title: currentSong.title, artist: currentSong.artist } : null
+      const evaluatedPlayerId = game.buzz_winner_id
 
       lastHostFeedbackTimeRef.current = Date.now()
 
@@ -622,14 +623,7 @@ export function HostDashboard({
         playWrongSound()
         setFeedbackAnim('wrong')
         setTimeout(() => setFeedbackAnim('none'), 800)
-
-        // Instant broadcast to all players (0ms WebSocket)
-        broadcastHostAction(game.id, 'ANSWER_RESULT', {
-          result,
-          wrongPlayerId: game.buzz_winner_id,
-          winnerName: currentBuzzWinner?.name || 'Pemain Lain',
-          revealedSong: currentSongData,
-        })
+        // Wait for DB update before broadcasting buzzer reopening so DB is 100% READY
       }
 
       setIsLoading(true)
@@ -644,16 +638,33 @@ export function HostDashboard({
         })
         const data = await res.json()
 
-        // Server confirmed resolution: broadcast outcome context if special state
+        // Server confirmed resolution: DB is now 100% updated and exclusions saved!
+        // Now broadcast to players to open the buzzer safely
         if (res.ok && result === 'WRONG') {
           if (data.allWrong) {
-            broadcastHostAction(game.id, 'ALL_WRONG', {
+            broadcastHostAction(game.id, 'ANSWER_RESULT', {
+              result: 'WRONG',
               allWrong: true,
               revealedSong: currentSongData,
+              wrongPlayerId: data.wrongPlayerId || evaluatedPlayerId,
+              winnerName: currentBuzzWinner?.name || 'Pemain Lain',
             })
           } else if (data.duelTurnPassed) {
-            broadcastHostAction(game.id, 'DUEL_TURN_PASSED', {
+            broadcastHostAction(game.id, 'ANSWER_RESULT', {
+              result: 'WRONG',
+              duelTurnPassed: true,
               nextPlayerId: data.nextPlayerId ?? null,
+              revealedSong: currentSongData,
+              wrongPlayerId: data.wrongPlayerId || evaluatedPlayerId,
+              winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+            })
+          } else {
+            broadcastHostAction(game.id, 'ANSWER_RESULT', {
+              result: 'WRONG',
+              wrongPlayerId: data.wrongPlayerId || evaluatedPlayerId,
+              winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+              nextAttempt: data.nextAttempt ?? null,
+              revealedSong: currentSongData,
             })
           }
         }

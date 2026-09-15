@@ -285,7 +285,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
               setRevealedSong(msg.payload.revealedSong)
             }
           } else {
-            const isMe = wrongPlayerId === session.playerId
+            const isMe = wrongPlayerId === session.playerId || (wrongPlayerId == null && iWasWinnerRef.current)
             const winnerName = msg.payload?.winnerName || (isMe ? session.playerName : 'Pemain Lain')
             const allWrong = !!msg.payload?.allWrong
 
@@ -417,7 +417,11 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     localWinner === true ||
     (!isBuzzing && game.buzz_winner_id === session.playerId && localWinner !== false)
   // isExcluded includes instant local state so button disables immediately without waiting for DB
-  const isExcluded = Boolean((me && me.excluded_attempt !== null) || localExcluded)
+  const isExcluded = Boolean(
+    (me && me.excluded_attempt !== null) ||
+    localExcluded ||
+    (iWasWinnerRef.current && game.current_attempt > 1)
+  )
   const buzzWinnerPlayer = players.find((p) => p.id === game.buzz_winner_id)
 
   // Tournament state helpers
@@ -509,6 +513,12 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         console.error('Buzz rejected:', data?.error || res.status)
         setLocalWinner(false)
         iWasWinnerRef.current = false
+        // Revert any optimistic broadcast back to READY so host & players don't stay locked
+        broadcastFastBuzz(game.id, {
+          type: 'BUZZ_STATE',
+          buzzState: 'READY',
+          winnerId: null,
+        })
         return false
       }
       if (data.winner === true) {
@@ -523,12 +533,21 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       iWasWinnerRef.current = false
       const matched = players.find((p) => p.id === data.winnerId)
       setLocalWinnerName(data.winnerName || matched?.name || 'Pemain Lain')
-      // Correct the broadcast with actual DB winner
-      broadcastFastBuzz(game.id, {
-        type: 'BUZZ_WINNER',
-        winnerId: data.winnerId,
-        winnerName: data.winnerName || matched?.name || 'Pemain Lain',
-      })
+      // Correct the broadcast with actual DB winner ONLY if there is a confirmed valid other winner
+      if (data.winnerId && data.winnerId !== session.playerId) {
+        broadcastFastBuzz(game.id, {
+          type: 'BUZZ_WINNER',
+          winnerId: data.winnerId,
+          winnerName: data.winnerName || matched?.name || 'Pemain Lain',
+        })
+      } else {
+        // No valid winner in DB, reopen buzzer to READY
+        broadcastFastBuzz(game.id, {
+          type: 'BUZZ_STATE',
+          buzzState: 'READY',
+          winnerId: null,
+        })
+      }
       return false
     } catch (err) {
       console.error('Buzz error:', err)

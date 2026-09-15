@@ -251,7 +251,13 @@ export async function POST(
         })
         .eq('id', game.id)
 
-      return NextResponse.json({ ok: true, points, nextAttempt, allWrong: false })
+      return NextResponse.json({
+        ok: true,
+        points,
+        nextAttempt,
+        allWrong: false,
+        wrongPlayerId: game.buzz_winner_id,
+      })
     }
   } catch (err) {
     console.error('POST /api/admin/[roomCode]/answer error:', err)
