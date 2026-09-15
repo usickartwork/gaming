@@ -53,6 +53,7 @@ export function HostDashboard({
   const [tab, setTab] = useState<'bracket' | 'players' | 'leaderboard'>('players')
   const [confirmEndGame, setConfirmEndGame] = useState(false)
   const [feedbackAnim, setFeedbackAnim] = useState<'none' | 'correct' | 'wrong'>('none')
+  const [playerViolations, setPlayerViolations] = useState<Record<string, number>>({})
 
   const gameMode = getGameMode(game)
   const tournamentState = getTournamentState(game)
@@ -427,6 +428,11 @@ export function HostDashboard({
           lastWinnerRef.current = msg.winnerId
           playHostBuzzAlert()
         }
+      } else if (msg.type === 'PLAYER_VIOLATION' && msg.playerId) {
+        setPlayerViolations((prev) => ({
+          ...prev,
+          [msg.playerId]: msg.count ?? (prev[msg.playerId] || 0) + 1,
+        }))
       }
     }
     window.addEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
@@ -1061,6 +1067,7 @@ export function HostDashboard({
                   onUpdateScore={handleUpdateScore}
                   onResetAllScores={handleResetAllScores}
                   isLoading={isLoading}
+                  playerViolations={playerViolations}
                 />
               )}
               {tab === 'leaderboard' && (

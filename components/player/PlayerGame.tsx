@@ -23,6 +23,7 @@ import {
   SwordsIcon,
   CrownIcon,
   UsersIcon,
+  ShieldAlertIcon,
 } from '@/components/shared/Icons'
 import {
   getGameDisplayName,
@@ -88,6 +89,10 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     []
   )
   const [showBracketModal, setShowBracketModal] = useState(false)
+  const [showCheatWarning, setShowCheatWarning] = useState(false)
+  const [cheatViolationCount, setCheatViolationCount] = useState(0)
+  const violationCountRef = useRef(0)
+  const [excludedReason, setExcludedReason] = useState<'wrong' | 'cheat' | null>(null)
 
   const gameMode = getGameMode(game)
   const tournamentState = getTournamentState(game)
@@ -217,6 +222,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     isBuzzingRef.current = false
     setIsBuzzing(false)
     setLocalExcluded(false)
+    setExcludedReason(null)
     iWasWinnerRef.current = false
     lastHandledResultKeyRef.current = null
   }, [game.current_song_id])
@@ -251,6 +257,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   useEffect(() => {
     if (game.buzz_state === 'READY' && game.buzz_winner_id === null && game.current_attempt === 1) {
       setLocalExcluded(false)
+      setExcludedReason(null)
       iWasWinnerRef.current = false
     }
   }, [game.buzz_state, game.buzz_winner_id, game.current_attempt])
@@ -285,11 +292,13 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             if (isMe) {
               // We answered wrong! Instantly exclude buzzer with 0ms delay!
               setLocalExcluded(true)
+              setExcludedReason('wrong')
               iWasWinnerRef.current = false
             }
 
             if (allWrong) {
               setLocalExcluded(false)
+              setExcludedReason(null)
               iWasWinnerRef.current = false
               lastHandledResultKeyRef.current = `${game.current_song_id || 'song'}_ALL_WRONG`
             }
@@ -303,6 +312,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           }
         } else if (msg.action === 'ALL_WRONG') {
           setLocalExcluded(false)
+          setExcludedReason(null)
           iWasWinnerRef.current = false
           lastHandledResultKeyRef.current = `${game.current_song_id || 'song'}_ALL_WRONG`
           if (msg.payload?.revealedSong) {
@@ -311,6 +321,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
         } else if (msg.action === 'RESET_BUZZ') {
           // Full reset from host — unlock everything instantly
           setLocalExcluded(false)
+          setExcludedReason(null)
           setLocalWinner(null)
           setLocalWinnerName(null)
           isBuzzingRef.current = false
@@ -332,6 +343,73 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
   // Track online presence
   usePresence(initialGame.id, session.playerId, session.playerName, session.sessionToken)
+
+  // ── Anti-Cheat: Detect Tab Switching, App Minimizing & Page Navigation ──
+  useEffect(() => {
+    const isGameActive = game.status !== 'LOBBY' && game.status !== 'FINAL_RESULT'
+    if (!isGameActive) return
+
+    // 1. Prevent accidental back gesture / history pop
+    window.history.pushState(null, '', window.location.href)
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href)
+    }
+
+    // 2. Prevent back navigation / tab closing confirmation
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = ''
+      return ''
+    }
+
+    // 3. Tab switch / minimize detection (Anti-Cheat)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        violationCountRef.current += 1
+        const currentCount = violationCountRef.current
+        setCheatViolationCount(currentCount)
+
+        // If a song or buzz is active, disqualify/lock buzzer for this song
+        const isSongActive = Boolean(
+          game.buzz_state === 'READY' ||
+          game.buzz_state === 'LOCKED' ||
+          game.buzz_state === 'ANSWERING' ||
+          game.current_song_id
+        )
+
+        if (isSongActive) {
+          setLocalExcluded(true)
+          setExcludedReason('cheat')
+        }
+
+        // Notify Host via WebSocket broadcast immediately
+        try {
+          broadcastFastBuzz(game.id, {
+            type: 'PLAYER_VIOLATION',
+            playerId: session.playerId,
+            playerName: session.playerName,
+            count: currentCount,
+          })
+        } catch (err) {
+          console.error('Error broadcasting violation:', err)
+        }
+      } else if (document.visibilityState === 'visible') {
+        if (violationCountRef.current > 0) {
+          setShowCheatWarning(true)
+        }
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('popstate', handlePopState)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('popstate', handlePopState)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [game.status, game.id, game.buzz_state, game.current_song_id, session.playerId, session.playerName])
 
   const me = players.find((p) => p.id === session.playerId)
   // isWinner is true when DB confirms it, or immediately when local confirmation arrives
@@ -561,6 +639,37 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return null
   }
 
+  // ── Anti-Cheat Modal Overlay ──────────────────────────────────────
+  const renderAntiCheatWarning = () => {
+    if (!showCheatWarning) return null
+
+    return (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/90 backdrop-blur-md animate-in fade-in duration-150 select-none">
+        <div className="flex flex-col items-center text-center space-y-4 max-w-xs animate-shake bg-slate-900 border-2 border-rose-500/80 rounded-3xl p-6 shadow-[0_0_50px_rgba(244,63,94,0.6)]">
+          <div className="w-20 h-20 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
+            <ShieldAlertIcon size={44} />
+          </div>
+          <div className="space-y-2">
+            <span className="inline-block px-3 py-1 rounded-full bg-rose-500 text-slate-950 font-black text-xs uppercase tracking-widest">
+              PERINGATAN KEAMANAN ({cheatViolationCount}x)
+            </span>
+            <h2 className="text-xl font-black text-white">Terdeteksi Berpindah Halaman!</h2>
+            <p className="text-xs text-rose-300 font-medium leading-relaxed">
+              Kamu berpindah tab atau aplikasi selama permainan berlangsung. Buzzer kamu dikunci untuk lagu ini dan pelanggaran telah dicatat oleh Host!
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCheatWarning(false)}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-400 hover:to-red-500 text-white font-black text-sm tracking-wide shadow-lg shadow-rose-600/30 transition-all active:scale-95 cursor-pointer"
+          >
+            SAYA PAHAM & KEMBALI
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // ── Waiting Room ─────────────────────────────────────────────────
   if (game.status === 'LOBBY') {
     return (
@@ -626,6 +735,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-emerald-950/60 via-slate-900 to-black">
         {renderFeedbackOverlay()}
+        {renderAntiCheatWarning()}
         <TournamentBracketModal
           isOpen={showBracketModal}
           onClose={() => setShowBracketModal(false)}
@@ -685,6 +795,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         {renderFeedbackOverlay()}
+        {renderAntiCheatWarning()}
         <TournamentBracketModal
           isOpen={showBracketModal}
           onClose={() => setShowBracketModal(false)}
@@ -742,6 +853,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return (
       <div className="min-h-screen flex flex-col items-center justify-start p-4 sm:p-6 relative overflow-y-auto">
         {renderFeedbackOverlay()}
+        {renderAntiCheatWarning()}
         <TournamentBracketModal
           isOpen={showBracketModal}
           onClose={() => setShowBracketModal(false)}
@@ -858,6 +970,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     return (
       <div className="min-h-screen flex flex-col justify-between p-4 sm:p-6 select-none relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         {renderFeedbackOverlay()}
+        {renderAntiCheatWarning()}
         <TournamentBracketModal
           isOpen={showBracketModal}
           onClose={() => setShowBracketModal(false)}
@@ -1045,6 +1158,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
       }`}
     >
       {renderFeedbackOverlay()}
+      {renderAntiCheatWarning()}
       <TournamentBracketModal
         isOpen={showBracketModal}
         onClose={() => setShowBracketModal(false)}
@@ -1153,6 +1267,7 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
           isWinner={isWinner}
           onBuzz={handleBuzz}
           isExcluded={isExcluded}
+          excludedReason={excludedReason}
           isBuzzing={isBuzzing}
         />
       </div>

@@ -9,6 +9,7 @@ interface PlayerListPanelProps {
   onUpdateScore?: (playerId: string, newScore: number) => Promise<void>
   onResetAllScores?: () => Promise<void>
   isLoading?: boolean
+  playerViolations?: Record<string, number>
 }
 
 export function PlayerListPanel({
@@ -16,6 +17,7 @@ export function PlayerListPanel({
   onUpdateScore,
   onResetAllScores,
   isLoading,
+  playerViolations,
 }: PlayerListPanelProps) {
   const sorted = [...players].sort((a, b) => b.score - a.score)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -108,6 +110,11 @@ export function PlayerListPanel({
               />
               <span className="text-xs text-slate-500 font-mono font-bold w-4 shrink-0">{i + 1}.</span>
               <span className="text-sm text-slate-200 font-bold truncate">{p.name}</span>
+              {playerViolations && playerViolations[p.id] ? (
+                <span className="shrink-0 px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-400 text-[10px] font-black animate-pulse">
+                  ⚠️ {playerViolations[p.id]}x Keluar
+                </span>
+              ) : null}
             </div>
 
             {/* Score Controls */}

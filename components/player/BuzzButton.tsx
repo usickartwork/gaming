@@ -10,10 +10,11 @@ interface BuzzButtonProps {
   isWinner: boolean
   onBuzz: () => Promise<boolean>
   isExcluded?: boolean
+  excludedReason?: 'wrong' | 'cheat' | null
   isBuzzing?: boolean
 }
 
-export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing }: BuzzButtonProps) {
+export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, excludedReason, isBuzzing }: BuzzButtonProps) {
   const [pressing, setPressing] = useState(false)
   const pressedRef = useRef(false)
 
@@ -80,16 +81,17 @@ export function BuzzButton({ buzzState, isWinner, onBuzz, isExcluded, isBuzzing 
   }
 
   if (buzzState === 'READY' && isExcluded) {
+    const isCheat = excludedReason === 'cheat'
     return (
       <div className="flex flex-col items-center gap-5 select-none">
         <div className="p-3 rounded-full bg-slate-900 border border-white/5 shadow-2xl">
           <div className="w-52 h-52 sm:w-60 sm:h-60 rounded-full bg-gradient-to-b from-rose-950/60 to-slate-950 border-4 border-rose-500/30 flex flex-col items-center justify-center text-center p-4">
             <BlockedIcon size={44} className="mb-2 text-rose-400" />
             <p className="text-rose-400 text-sm font-bold leading-snug">
-              Kamu Salah Jawab
+              {isCheat ? 'Terdeteksi Keluar Web!' : 'Kamu Salah Jawab'}
             </p>
             <p className="text-slate-400 text-[11px] mt-1">
-              Menunggu giliran lagu berikutnya
+              {isCheat ? 'Buzzer dikunci karena berpindah tab/aplikasi' : 'Menunggu giliran lagu berikutnya'}
             </p>
           </div>
         </div>
