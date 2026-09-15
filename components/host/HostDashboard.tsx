@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useGameState, broadcastHostAction } from '@/lib/hooks/useGameState'
 import { usePlayers } from '@/lib/hooks/usePlayers'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
-import { playDingSound, playCorrectFanfareSound, playWrongSound } from '@/lib/audio'
+import { playDingSound, playCorrectFanfareSound, playWrongSound, playHostBuzzAlert } from '@/lib/audio'
 import {
   MicIcon,
   MusicIcon,
@@ -411,11 +411,38 @@ export function HostDashboard({
     }
   }
 
-  // Play sound when someone buzzes in
+  // Play sound when someone buzzes in on Host console (instant WebSocket + state fallback)
   const lastWinnerRef = useRef<string | null>(null)
+  const lastBuzzSoundTimeRef = useRef(0)
+
+  // Direct 0ms WebSocket event listener for incoming buzz
+  useEffect(() => {
+    const handleBroadcast = (e: Event) => {
+      const msg = (e as CustomEvent).detail
+      if (!msg) return
+      if (msg.type === 'BUZZ_WINNER' && msg.winnerId) {
+        const now = Date.now()
+        if (now - lastBuzzSoundTimeRef.current > 1000) {
+          lastBuzzSoundTimeRef.current = now
+          lastWinnerRef.current = msg.winnerId
+          playHostBuzzAlert()
+        }
+      }
+    }
+    window.addEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
+    return () => {
+      window.removeEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
+    }
+  }, [initialGame.id])
+
+  // Fallback sync when buzz_winner_id updates
   useEffect(() => {
     if (game.buzz_winner_id && game.buzz_winner_id !== lastWinnerRef.current) {
-      playDingSound()
+      const now = Date.now()
+      if (now - lastBuzzSoundTimeRef.current > 1000) {
+        lastBuzzSoundTimeRef.current = now
+        playHostBuzzAlert()
+      }
     }
     lastWinnerRef.current = game.buzz_winner_id
   }, [game.buzz_winner_id])

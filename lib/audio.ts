@@ -5,18 +5,92 @@
 
 let audioCtx: AudioContext | null = null
 
-function getAudioContext(): AudioContext | null {
+export function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null
   if (!audioCtx) {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
     if (AudioCtx) {
       audioCtx = new AudioCtx()
     }
   }
   if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume()
+    audioCtx.resume().catch(() => {})
   }
   return audioCtx
+}
+
+/**
+ * Prime and unlock AudioContext on first user interaction (click, touch, key).
+ * Essential for Host device to play buzzer sound arriving via WebSocket.
+ */
+export function unlockAudio() {
+  const ctx = getAudioContext()
+  if (ctx && ctx.state === 'suspended') {
+    ctx.resume().catch(() => {})
+  }
+}
+
+if (typeof window !== 'undefined') {
+  const handleFirstInteraction = () => {
+    unlockAudio()
+    window.removeEventListener('pointerdown', handleFirstInteraction)
+    window.removeEventListener('keydown', handleFirstInteraction)
+    window.removeEventListener('click', handleFirstInteraction)
+  }
+  window.addEventListener('pointerdown', handleFirstInteraction, { once: true, passive: true })
+  window.addEventListener('keydown', handleFirstInteraction, { once: true, passive: true })
+  window.addEventListener('click', handleFirstInteraction, { once: true, passive: true })
+}
+
+/**
+ * Crisp, punchy game-show buzzer sound for Host when an incoming buzz arrives.
+ * High clarity double chime bell (E5 -> A5 + overtones).
+ */
+export function playHostBuzzAlert() {
+  try {
+    const ctx = getAudioContext()
+    if (!ctx) return
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {})
+    }
+
+    const now = ctx.currentTime
+
+    // Oscillator 1: Fundamental bell tone
+    const osc1 = ctx.createOscillator()
+    const gain1 = ctx.createGain()
+    osc1.type = 'sine'
+    osc1.frequency.setValueAtTime(659.25, now) // E5
+    osc1.frequency.setValueAtTime(880, now + 0.08) // A5
+
+    gain1.gain.setValueAtTime(0.5, now)
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
+
+    osc1.connect(gain1)
+    gain1.connect(ctx.destination)
+
+    // Oscillator 2: Arcade chime overtone for punchy presence
+    const osc2 = ctx.createOscillator()
+    const gain2 = ctx.createGain()
+    osc2.type = 'triangle'
+    osc2.frequency.setValueAtTime(1318.5, now) // E6
+    osc2.frequency.setValueAtTime(1760, now + 0.08) // A6
+
+    gain2.gain.setValueAtTime(0.3, now)
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
+
+    osc2.connect(gain2)
+    gain2.connect(ctx.destination)
+
+    osc1.start(now)
+    osc2.start(now)
+    osc1.stop(now + 0.5)
+    osc2.stop(now + 0.5)
+  } catch (e) {
+    console.error('Audio play error:', e)
+  }
 }
 
 /**
