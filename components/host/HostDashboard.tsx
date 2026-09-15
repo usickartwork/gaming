@@ -561,14 +561,18 @@ export function HostDashboard({
 
   const answerAction = useCallback(
     async (result: 'CORRECT' | 'WRONG') => {
-      // 1. Instant broadcast ke semua player (optimistic) — tanpa sound/anim di host dulu
-      // Host sound & anim akan triggered oleh useEffect reaktif terhadap DB (single source of truth)
       const currentBuzzWinner = players.find((p) => p.id === game.buzz_winner_id)
-      broadcastHostAction(game.id, 'ANSWER_RESULT', {
-        result,
-        winnerId: game.buzz_winner_id,
-        winnerName: currentBuzzWinner?.name || 'Pemain Lain',
-      })
+
+      // CORRECT: broadcast instantly — always safe, no ambiguity
+      // WRONG: don't broadcast yet — must wait for server to know if it's ALL_WRONG,
+      //        regular WRONG, or duel-turn-passed. One accurate broadcast > two conflicting ones.
+      if (result === 'CORRECT') {
+        broadcastHostAction(game.id, 'ANSWER_RESULT', {
+          result,
+          winnerId: game.buzz_winner_id,
+          winnerName: currentBuzzWinner?.name || 'Pemain Lain',
+        })
+      }
 
       setIsLoading(true)
       try {
@@ -582,8 +586,7 @@ export function HostDashboard({
         })
         const data = await res.json()
 
-        // 2. Setelah server konfirmasi, broadcast ulang dengan info lengkap (allWrong, duelTurnPassed)
-        // Ini memastikan player menerima flag yang benar tanpa harus tunggu postgres_changes
+        // After server confirms WRONG, broadcast ONE accurate signal with full context
         if (res.ok && result === 'WRONG') {
           broadcastHostAction(game.id, 'ANSWER_RESULT', {
             result,
