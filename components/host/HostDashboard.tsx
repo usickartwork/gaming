@@ -74,8 +74,11 @@ export function HostDashboard({
     async (action: string, payload?: object) => {
       setIsLoading(true)
       try {
-        // If opening buzzer, ensure DB is READY first so no player buzzes before DB is updated
-        if (action === 'SET_BUZZ_STATE' && (payload as any)?.buzzState === 'READY') {
+        // If opening buzzer or resetting all buzzers, ensure DB is READY first so no player buzzes before DB is updated
+        if (
+          action === 'RESET_BUZZ' ||
+          (action === 'SET_BUZZ_STATE' && (payload as any)?.buzzState === 'READY')
+        ) {
           await fetch(`/api/admin/${game.room_code}`, {
             method: 'PATCH',
             headers: {
@@ -84,7 +87,7 @@ export function HostDashboard({
             },
             body: JSON.stringify({ action, payload }),
           })
-          // Now that DB is 100% READY, signal all players
+          // Now that DB is 100% READY and exclusions cleared, signal all players
           broadcastHostAction(game.id, action, payload)
           return
         }
@@ -596,6 +599,7 @@ export function HostDashboard({
             duelTurnPassed: !!data.duelTurnPassed,
             nextPlayerId: data.nextPlayerId ?? null,
             nextAttempt: data.nextAttempt ?? null,
+            wrongPlayerId: game.buzz_winner_id,
           })
         }
       } finally {
@@ -874,7 +878,7 @@ export function HostDashboard({
             currentAttempt={game.current_attempt}
             onEnableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
             onDisableBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'DISABLED' })}
-            onResetBuzz={() => hostAction('SET_BUZZ_STATE', { buzzState: 'READY' })}
+            onResetBuzz={() => hostAction('RESET_BUZZ')}
             onCorrect={() => answerAction('CORRECT')}
             onWrong={() => answerAction('WRONG')}
             isLoading={isLoading}

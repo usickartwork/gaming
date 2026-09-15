@@ -470,6 +470,7 @@ export function resetReadyPlayers(state: TournamentState | null): TournamentStat
 
 /**
  * Encodes and saves tournament state into game record (both name column and tournament_state column)
+ * Uses a single atomic update to prevent duplicate Realtime postgres_changes broadcast events.
  */
 export async function saveGameTournament(
   supabase: any,
@@ -480,22 +481,24 @@ export async function saveGameTournament(
   extraUpdates?: Record<string, any>
 ) {
   const encodedName = encodeGameStateName(currentName, state)
-  await supabase
+
+  // Single combined update to prevent firing multiple postgres_changes triggers
+  const { error } = await supabase
     .from('games')
-    .update({ name: encodedName, ...extraUpdates })
+    .update({
+      name: encodedName,
+      game_mode: mode,
+      tournament_state: state,
+      ...extraUpdates,
+    })
     .eq('id', gameId)
 
-  try {
+  if (error) {
+    // Fallback if tournament_state or game_mode column doesn't exist in DB schema
     await supabase
       .from('games')
-      .update({
-        game_mode: mode,
-        tournament_state: state,
-        ...extraUpdates,
-      })
+      .update({ name: encodedName, ...extraUpdates })
       .eq('id', gameId)
-  } catch {
-    // Gracefully ignore if columns not in DB schema yet
   }
 }
 

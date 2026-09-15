@@ -82,6 +82,37 @@ export async function PATCH(
         break
       }
 
+      case 'RESET_BUZZ': {
+        // 1. Reset buzzer to READY, clear winner, reset attempt to 1
+        await supabase
+          .from('games')
+          .update({
+            buzz_state: 'READY',
+            buzz_winner_id: null,
+            current_attempt: 1,
+          })
+          .eq('id', game.id)
+
+        // 2. Clear all player exclusions so nobody is locked out
+        await supabase
+          .from('players')
+          .update({ excluded_attempt: null })
+          .eq('game_id', game.id)
+
+        // 3. Clear any previous song outcome in tournament state
+        const ts = getTournamentState(game)
+        if (ts) {
+          const updatedTS = {
+            ...ts,
+            lastSongOutcome: null,
+            lastWinnerId: null,
+            lastWinnerName: null,
+          }
+          await saveGameTournament(supabase, game.id, game.name, updatedTS, ts.mode || 'CLASSIC')
+        }
+        break
+      }
+
       case 'SET_GAME_STATUS': {
         await supabase
           .from('games')

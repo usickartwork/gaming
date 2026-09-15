@@ -97,6 +97,11 @@ export function useGameState(gameId: string, initialGame: Game): Game {
                   next.buzz_state = msg.payload?.buzzState || 'DISABLED'
                   next.buzz_winner_id = null
                   break
+                case 'RESET_BUZZ':
+                  next.buzz_state = 'READY'
+                  next.buzz_winner_id = null
+                  next.current_attempt = 1
+                  break
                 case 'SET_CURRENT_SONG':
                   next.current_song_id = msg.payload?.songId || null
                   next.buzz_state = 'DISABLED'
