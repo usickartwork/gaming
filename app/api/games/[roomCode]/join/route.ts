@@ -54,8 +54,8 @@ export async function POST(
       })
     }
 
-    if (game.status !== 'LOBBY') {
-      return NextResponse.json({ error: 'Game already started' }, { status: 400 })
+    if (game.status === 'FINAL_RESULT') {
+      return NextResponse.json({ error: 'Permainan sudah selesai' }, { status: 400 })
     }
 
     // Check player count
