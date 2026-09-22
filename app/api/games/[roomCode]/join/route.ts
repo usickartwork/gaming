@@ -32,6 +32,28 @@ export async function POST(
       return NextResponse.json({ error: 'Room not found' }, { status: 404 })
     }
 
+    // Check if player with this name already exists in room (e.g. added by host, or rejoining)
+    const { data: existing } = await supabase
+      .from('players')
+      .select('id, name, session_token')
+      .eq('game_id', game.id)
+      .ilike('name', name.trim())
+      .single()
+
+    if (existing) {
+      await supabase
+        .from('players')
+        .update({ connected: true })
+        .eq('id', existing.id)
+
+      return NextResponse.json({
+        playerId: existing.id,
+        sessionToken: existing.session_token,
+        gameId: game.id,
+        playerName: existing.name,
+      })
+    }
+
     if (game.status !== 'LOBBY') {
       return NextResponse.json({ error: 'Game already started' }, { status: 400 })
     }
@@ -42,20 +64,8 @@ export async function POST(
       .select('*', { count: 'exact', head: true })
       .eq('game_id', game.id)
 
-    if ((count ?? 0) >= 20) {
-      return NextResponse.json({ error: 'Room is full (max 20 players)' }, { status: 400 })
-    }
-
-    // Check for duplicate name in same room
-    const { data: existing } = await supabase
-      .from('players')
-      .select('id')
-      .eq('game_id', game.id)
-      .ilike('name', name.trim())
-      .single()
-
-    if (existing) {
-      return NextResponse.json({ error: 'Name already taken in this room' }, { status: 400 })
+    if ((count ?? 0) >= 30) {
+      return NextResponse.json({ error: 'Room is full (max 30 players)' }, { status: 400 })
     }
 
     // Insert player

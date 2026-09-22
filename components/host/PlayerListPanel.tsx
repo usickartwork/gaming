@@ -8,6 +8,7 @@ interface PlayerListPanelProps {
   players: Player[]
   onUpdateScore?: (playerId: string, newScore: number) => Promise<void>
   onResetAllScores?: () => Promise<void>
+  onAddPlayer?: (name: string) => Promise<void>
   isLoading?: boolean
   playerViolations?: Record<string, number>
 }
@@ -16,6 +17,7 @@ export function PlayerListPanel({
   players,
   onUpdateScore,
   onResetAllScores,
+  onAddPlayer,
   isLoading,
   playerViolations,
 }: PlayerListPanelProps) {
@@ -23,6 +25,25 @@ export function PlayerListPanel({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState<string>('')
   const [confirmReset, setConfirmReset] = useState(false)
+  const [newPlayerName, setNewPlayerName] = useState('')
+  const [isAdding, setIsAdding] = useState(false)
+  const [addError, setAddError] = useState('')
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = newPlayerName.trim()
+    if (!trimmed || !onAddPlayer || isAdding) return
+    setIsAdding(true)
+    setAddError('')
+    try {
+      await onAddPlayer(trimmed)
+      setNewPlayerName('')
+    } catch (err: any) {
+      setAddError(err?.message || 'Gagal menambahkan pemain')
+    } finally {
+      setIsAdding(false)
+    }
+  }
 
   const handleStartEdit = (p: Player) => {
     setEditingId(p.id)
@@ -93,6 +114,34 @@ export function PlayerListPanel({
           </div>
         )}
       </div>
+
+      {/* Quick Add Player Form */}
+      {onAddPlayer && (
+        <form onSubmit={handleAddSubmit} className="flex items-center gap-2">
+          <input
+            type="text"
+            value={newPlayerName}
+            onChange={(e) => {
+              setNewPlayerName(e.target.value)
+              if (addError) setAddError('')
+            }}
+            placeholder="Tambah nama pemain..."
+            maxLength={20}
+            className="flex-1 bg-slate-900/90 text-white placeholder-slate-500 rounded-xl px-3 py-2 text-xs border border-white/10 focus:border-emerald-500 outline-none transition-all font-medium"
+          />
+          <button
+            type="submit"
+            disabled={!newPlayerName.trim() || isAdding || isLoading}
+            className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold rounded-xl transition-all flex items-center gap-1 shrink-0 active:scale-95 shadow-sm shadow-emerald-500/20"
+          >
+            <PlusIcon size={14} />
+            <span>{isAdding ? '...' : 'Tambah'}</span>
+          </button>
+        </form>
+      )}
+      {addError && (
+        <p className="text-[11px] text-rose-400 font-semibold px-1">{addError}</p>
+      )}
 
       {/* Players List with Quick Adjusters & Inline Edit */}
       <div className="space-y-2 max-h-80 overflow-y-auto pr-1">

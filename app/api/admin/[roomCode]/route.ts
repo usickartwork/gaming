@@ -303,6 +303,49 @@ export async function PATCH(
         break
       }
 
+      case 'ADD_PLAYER': {
+        const playerName = (payload?.name as string)?.trim()
+        if (!playerName) {
+          return NextResponse.json({ error: 'Nama pemain wajib diisi' }, { status: 400 })
+        }
+
+        // Check if name already taken in this room
+        const { data: existing } = await supabase
+          .from('players')
+          .select('id')
+          .eq('game_id', game.id)
+          .ilike('name', playerName)
+          .single()
+
+        if (existing) {
+          return NextResponse.json({ error: 'Nama pemain sudah ada di room ini' }, { status: 400 })
+        }
+
+        // Check player count (max 30)
+        const { count } = await supabase
+          .from('players')
+          .select('*', { count: 'exact', head: true })
+          .eq('game_id', game.id)
+
+        if ((count ?? 0) >= 30) {
+          return NextResponse.json({ error: 'Room sudah penuh (maksimal 30 pemain)' }, { status: 400 })
+        }
+
+        const { data: newPlayer, error: insertError } = await supabase
+          .from('players')
+          .insert({
+            game_id: game.id,
+            name: playerName,
+            score: 0,
+            connected: true,
+          })
+          .select()
+          .single()
+
+        if (insertError) throw insertError
+        return NextResponse.json({ ok: true, player: newPlayer })
+      }
+
       case 'SET_GAME_MODE': {
         const targetMode = payload?.mode === 'KNOCKOUT' ? 'KNOCKOUT' : 'CLASSIC'
         let currentTS = getTournamentState(game)

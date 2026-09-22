@@ -1,6 +1,7 @@
 'use client'
 
-import { UsersIcon, PlayIcon, SwordsIcon, TrophyIcon } from '@/components/shared/Icons'
+import { useState } from 'react'
+import { UsersIcon, PlayIcon, SwordsIcon, TrophyIcon, PlusIcon } from '@/components/shared/Icons'
 import { getGameDisplayName } from '@/lib/tournament-utils'
 import type { Player, GameMode } from '@/lib/types'
 
@@ -13,6 +14,7 @@ interface WaitingRoomProps {
   onSetGameMode?: (mode: GameMode) => void
   onStartGame?: () => void
   isStarting?: boolean
+  onAddPlayer?: (name: string) => Promise<void>
 }
 
 export function WaitingRoom({
@@ -24,8 +26,28 @@ export function WaitingRoom({
   onSetGameMode,
   onStartGame,
   isStarting,
+  onAddPlayer,
 }: WaitingRoomProps) {
   const displayName = getGameDisplayName(gameName)
+  const [newPlayerName, setNewPlayerName] = useState('')
+  const [isAdding, setIsAdding] = useState(false)
+  const [addError, setAddError] = useState('')
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = newPlayerName.trim()
+    if (!trimmed || !onAddPlayer || isAdding) return
+    setIsAdding(true)
+    setAddError('')
+    try {
+      await onAddPlayer(trimmed)
+      setNewPlayerName('')
+    } catch (err: any) {
+      setAddError(err?.message || 'Gagal menambahkan pemain')
+    } finally {
+      setIsAdding(false)
+    }
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-hidden">
@@ -100,6 +122,34 @@ export function WaitingRoom({
             {players.length} / 20 Pemain
           </span>
         </div>
+
+        {/* Host Quick Add Player Form */}
+        {isHost && onAddPlayer && (
+          <form onSubmit={handleAddSubmit} className="flex items-center gap-2 mb-3">
+            <input
+              type="text"
+              value={newPlayerName}
+              onChange={(e) => {
+                setNewPlayerName(e.target.value)
+                if (addError) setAddError('')
+              }}
+              placeholder="Tambah nama pemain..."
+              maxLength={20}
+              className="flex-1 bg-slate-900/90 text-white placeholder-slate-500 rounded-xl px-3 py-2 text-xs border border-white/10 focus:border-emerald-500 outline-none transition-all font-medium"
+            />
+            <button
+              type="submit"
+              disabled={!newPlayerName.trim() || isAdding}
+              className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold rounded-xl transition-all flex items-center gap-1 shrink-0 active:scale-95 shadow-sm shadow-emerald-500/20"
+            >
+              <PlusIcon size={14} />
+              <span>{isAdding ? '...' : 'Tambah'}</span>
+            </button>
+          </form>
+        )}
+        {addError && (
+          <p className="text-[11px] text-rose-400 font-semibold mb-3 px-1">{addError}</p>
+        )}
 
         <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
           {players.map((p, idx) => (
