@@ -17,6 +17,7 @@ import {
   CrownIcon,
   CheckIcon,
   RefreshIcon,
+  ShieldAlertIcon,
 } from '@/components/shared/Icons'
 import { AudioPlayer } from './AudioPlayer'
 import { BuzzControlPanel } from './BuzzControlPanel'
@@ -54,6 +55,77 @@ export function HostDashboard({
   const [confirmEndGame, setConfirmEndGame] = useState(false)
   const [feedbackAnim, setFeedbackAnim] = useState<'none' | 'correct' | 'wrong'>('none')
   const [playerViolations, setPlayerViolations] = useState<Record<string, number>>({})
+
+  // ── Player Leave Notifications State ─────────────────────────────
+  const [leaveNotifications, setLeaveNotifications] = useState<
+    Array<{ id: string; playerName: string; message: string; count?: number }>
+  >([])
+  const lastNotifTimeRef = useRef<Record<string, number>>({})
+
+  const addLeaveNotification = useCallback((playerName: string, message: string, count?: number) => {
+    const now = Date.now()
+    const lastTime = lastNotifTimeRef.current[playerName] || 0
+    if (now - lastTime < 2500) return
+    lastNotifTimeRef.current[playerName] = now
+
+    const id = `${now}-${Math.random().toString(36).substring(2, 7)}`
+    setLeaveNotifications((prev) => [...prev.slice(-3), { id, playerName, message, count }])
+    setTimeout(() => {
+      setLeaveNotifications((prev) => prev.filter((n) => n.id !== id))
+    }, 6000)
+  }, [])
+
+  // ── Listen for player leave & tab switch events ───────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // 1. WebSocket Broadcast: When player switches tab / minimizes app (Anti-Cheat)
+    const handleBroadcast = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail
+      if (!detail) return
+
+      if (detail.type === 'PLAYER_VIOLATION') {
+        const playerId = detail.playerId
+        const playerName = detail.playerName || 'Pemain'
+        const count = detail.count || 1
+
+        setPlayerViolations((prev) => ({
+          ...prev,
+          [playerId]: count,
+        }))
+
+        addLeaveNotification(
+          playerName,
+          'terdeteksi keluar dari halaman game / berpindah tab!',
+          count
+        )
+      }
+    }
+
+    window.addEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
+
+    // 2. Supabase Presence: When player completely closes tab / disconnects
+    const supabase = getSupabaseBrowserClient()
+    const presenceChannel = supabase.channel(`presence:${initialGame.id}`)
+    presenceChannel
+      .on(
+        'presence',
+        { event: 'leave' },
+        ({ leftPresences }: { leftPresences: Array<{ playerId?: string; playerName?: string }> }) => {
+          leftPresences?.forEach((p) => {
+            if (p?.playerName) {
+              addLeaveNotification(p.playerName, 'telah keluar / menutup halaman game.')
+            }
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      window.removeEventListener(`game-broadcast:${initialGame.id}`, handleBroadcast)
+      supabase.removeChannel(presenceChannel)
+    }
+  }, [initialGame.id, addLeaveNotification])
 
   const gameMode = getGameMode(game)
   const tournamentState = getTournamentState(game)
@@ -662,6 +734,48 @@ export function HostDashboard({
     [game.room_code, hostSession.hostPassword, game.id, game.buzz_winner_id, game.current_attempt, game.current_song_id, players, currentSong]
   )
 
+  // ── Render Leave Notifications Toast Container ──────────────────
+  const renderLeaveNotifications = () => {
+    if (leaveNotifications.length === 0) return null
+    return (
+      <div className="fixed top-5 right-5 z-[9999] flex flex-col gap-2.5 pointer-events-none max-w-sm w-full px-4 sm:px-0">
+        {leaveNotifications.map((notif) => (
+          <div
+            key={notif.id}
+            className="pointer-events-auto glass-panel rounded-2xl p-3.5 sm:p-4 border border-rose-500/50 bg-slate-950/95 shadow-2xl shadow-rose-950/60 flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-200"
+          >
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0 mt-0.5">
+                <ShieldAlertIcon size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-white font-bold text-sm truncate">{notif.playerName}</span>
+                  {notif.count && notif.count > 0 ? (
+                    <span className="px-1.5 py-0.5 rounded bg-rose-500/30 text-rose-300 text-[10px] font-black border border-rose-500/40">
+                      ke-{notif.count}x
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-rose-300/90 text-xs mt-0.5 font-medium leading-relaxed">
+                  {notif.message}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLeaveNotifications((prev) => prev.filter((n) => n.id !== notif.id))}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors shrink-0 text-xs"
+              title="Tutup notifikasi"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (!game || !game.room_code) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
@@ -676,30 +790,35 @@ export function HostDashboard({
   // ── Waiting Room ──────────────────────────────────────────────────
   if (game.status === 'LOBBY') {
     return (
-      <WaitingRoom
-        roomCode={game.room_code}
-        gameName={game.name}
-        players={players}
-        isHost={true}
-        gameMode={gameMode}
-        onSetGameMode={handleSetGameMode}
-        onStartGame={() => hostAction('SET_GAME_STATUS', { status: 'ROUND_ACTIVE' })}
-        isStarting={isLoading}
-      />
+      <>
+        {renderLeaveNotifications()}
+        <WaitingRoom
+          roomCode={game.room_code}
+          gameName={game.name}
+          players={players}
+          isHost={true}
+          gameMode={gameMode}
+          onSetGameMode={handleSetGameMode}
+          onStartGame={() => hostAction('SET_GAME_STATUS', { status: 'ROUND_ACTIVE' })}
+          isStarting={isLoading}
+        />
+      </>
     )
   }
 
   // ── Active Game Dashboard ─────────────────────────────────────────
   return (
-    <div
-      className={`min-h-screen p-4 sm:p-6 max-w-7xl mx-auto space-y-5 transition-all ${
-        feedbackAnim === 'wrong'
-          ? 'animate-shake animate-flash-red'
-          : feedbackAnim === 'correct'
-          ? 'animate-flash-green'
-          : ''
-      }`}
-    >
+    <>
+      {renderLeaveNotifications()}
+      <div
+        className={`min-h-screen p-4 sm:p-6 max-w-7xl mx-auto space-y-5 transition-all ${
+          feedbackAnim === 'wrong'
+            ? 'animate-shake animate-flash-red'
+            : feedbackAnim === 'correct'
+            ? 'animate-flash-green'
+            : ''
+        }`}
+      >
       {/* Top Command Bar */}
       <div className="glass-panel rounded-3xl p-5 border border-white/10 flex flex-wrap items-center justify-between gap-4 shadow-xl">
         <div className="flex items-center gap-4">
@@ -1087,6 +1206,7 @@ export function HostDashboard({
         targetPlaylistName={playlists.find((p) => p.id === activePlaylistId)?.name}
         isLoading={isLoading}
       />
-    </div>
+      </div>
+    </>
   )
 }
