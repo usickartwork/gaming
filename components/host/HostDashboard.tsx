@@ -50,6 +50,18 @@ export function HostDashboard({
   const router = useRouter()
   const game = useGameState(initialGame.id, initialGame)
   const players = usePlayers(initialGame.id, initialPlayers)
+
+  // Cache players so final leaderboard is never empty on game completion
+  const [cachedPlayers, setCachedPlayers] = useState<Player[]>(initialPlayers)
+  useEffect(() => {
+    if (players && players.length > 0) {
+      setCachedPlayers(players)
+    }
+  }, [players])
+
+  const effectivePlayers = players.length > 0 ? players : cachedPlayers
+  const sortedFinalPlayers = [...effectivePlayers].sort((a, b) => b.score - a.score)
+
   const [isLoading, setIsLoading] = useState(false)
   const [tab, setTab] = useState<'bracket' | 'players' | 'leaderboard'>('players')
   const [confirmEndGame, setConfirmEndGame] = useState(false)
@@ -565,6 +577,18 @@ export function HostDashboard({
   const handleEndGame = async () => {
     setIsLoading(true)
     try {
+      await hostAction('SET_GAME_STATUS', { status: 'FINAL_RESULT' })
+      setConfirmEndGame(false)
+    } catch (err) {
+      console.error('Error ending game:', err)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleDeleteAndExit = async () => {
+    setIsLoading(true)
+    try {
       await fetch(`/api/admin/${game.room_code}`, {
         method: 'DELETE',
         headers: {
@@ -576,10 +600,10 @@ export function HostDashboard({
       }
       router.push('/')
     } catch (err) {
-      console.error('Error ending game:', err)
+      console.error('Error deleting game:', err)
+      router.push('/')
     } finally {
       setIsLoading(false)
-      setConfirmEndGame(false)
     }
   }
 
@@ -806,6 +830,65 @@ export function HostDashboard({
     )
   }
 
+  // ── FINAL RESULT SCREEN (When game is finished) ──────────────────
+  if (game.status === 'FINAL_RESULT') {
+    return (
+      <>
+        {renderLeaveNotifications()}
+        <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-8 relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
+          {/* Glowing ambient background */}
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/15 rounded-full blur-[140px] pointer-events-none" />
+
+          <div className="w-full max-w-lg space-y-6 relative z-10 text-center py-6">
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-400/20 to-amber-600/10 border-2 border-amber-400/40 flex items-center justify-center text-amber-400 mx-auto shadow-2xl shadow-amber-500/30 animate-bounce">
+              <TrophyIcon size={40} />
+            </div>
+
+            <div>
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-3 shadow-lg shadow-amber-400/30">
+                <CrownIcon size={14} />
+                <span>PERMAINAN SELESAI</span>
+              </div>
+              <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">
+                Klasemen Akhir Pertandingan
+              </h1>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">
+                Room Code: <span className="text-amber-400 font-mono font-bold tracking-widest">{game.room_code}</span> • Sesi Telah Berakhir
+              </p>
+            </div>
+
+            {/* Final Standings Leaderboard */}
+            <div className="glass-panel rounded-3xl p-5 border border-white/10 shadow-2xl text-left space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                  Hasil Akhir ({sortedFinalPlayers.length} Pemain)
+                </span>
+                {sortedFinalPlayers.length > 0 && (
+                  <span className="text-amber-400 text-xs font-bold flex items-center gap-1">
+                    <CrownIcon size={12} /> Juara 1: {sortedFinalPlayers[0]?.name} ({sortedFinalPlayers[0]?.score} pts)
+                  </span>
+                )}
+              </div>
+              <Leaderboard players={sortedFinalPlayers} />
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleDeleteAndExit}
+                disabled={isLoading}
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-black text-sm transition-all shadow-xl shadow-rose-600/25 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <TrashIcon size={16} />
+                <span>{isLoading ? 'Menghapus Room...' : 'Hapus Room & Kembali ke Beranda'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
   // ── Active Game Dashboard ─────────────────────────────────────────
   return (
     <>
@@ -954,7 +1037,7 @@ export function HostDashboard({
                 Selesaikan Permainan?
               </h2>
               <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-                Tindakan ini akan mengakhiri sesi untuk seluruh pemain dan menghapus seluruh data room, riwayat attempt, serta pemain dari Supabase secara permanen.
+                Tindakan ini akan mengakhiri sesi untuk seluruh pemain dan menampilkan klasemen akhir ke seluruh layar host & pemain.
               </p>
             </div>
 
@@ -973,7 +1056,7 @@ export function HostDashboard({
                 disabled={isLoading}
                 className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-sm shadow-lg shadow-rose-600/30 transition-all active:scale-95"
               >
-                {isLoading ? 'Menghapus...' : 'Ya, Selesaikan'}
+                {isLoading ? 'Menyelesaikan...' : 'Ya, Selesaikan & Lihat Klasemen'}
               </button>
             </div>
           </div>

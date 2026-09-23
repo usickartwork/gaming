@@ -43,6 +43,16 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
   const game = useGameState(initialGame.id, initialGame)
   const players = usePlayers(initialGame.id, initialPlayers)
 
+  // Cache players so final leaderboard is never empty even after room is completed/deleted
+  const [cachedPlayers, setCachedPlayers] = useState<Player[]>(initialPlayers)
+  useEffect(() => {
+    if (players && players.length > 0) {
+      setCachedPlayers(players)
+    }
+  }, [players])
+
+  const leaderboardPlayers = players.length > 0 ? players : cachedPlayers
+
   const [isBuzzing, setIsBuzzing] = useState(false)
   const isBuzzingRef = useRef(false) // mirrors isBuzzing so effects can read it without re-subscribing
   const [localWinner, setLocalWinner] = useState<boolean | null>(null)
@@ -717,8 +727,9 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
     )
   }
 
-  // ── FINAL_RESULT state (Game ended / room deleted) ─────────────
-  if (game.status === 'FINAL_RESULT') {
+  // ── FINAL_RESULT or ROUND_COMPLETE state (Announce Champion / Game Ended) ─────────────
+  if (game.status === 'FINAL_RESULT' || game.status === 'ROUND_COMPLETE') {
+    const isFinished = game.status === 'FINAL_RESULT'
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-5 sm:p-6 text-center relative overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black">
         <div className="absolute inset-0 bg-amber-500/10 blur-[120px] pointer-events-none" />
@@ -730,13 +741,15 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
 
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-widest mb-2 shadow-lg shadow-amber-400/30">
-              PERMAINAN SELESAI
+              {isFinished ? 'PERMAINAN SELESAI' : 'PENGUMUMAN JUARA'}
             </div>
             <h1 className="text-white text-3xl sm:text-4xl font-black tracking-tight">
-              Terima Kasih Telah Bermain!
+              {isFinished ? 'Terima Kasih Telah Bermain!' : 'Klasemen Pertandingan'}
             </h1>
             <p className="text-slate-400 text-xs mt-1">
-              Host telah menyelesaikan sesi permainan ini.
+              {isFinished
+                ? 'Host telah menyelesaikan sesi permainan ini.'
+                : 'Host sedang mengumumkan juara dan klasemen terkini.'}
             </p>
           </div>
 
@@ -745,20 +758,22 @@ export function PlayerGame({ initialGame, initialPlayers, session }: PlayerGameP
             <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2 text-center">
               Klasemen Akhir
             </p>
-            <Leaderboard players={players} highlightId={session.playerId} />
+            <Leaderboard players={leaderboardPlayers} highlightId={session.playerId} />
           </div>
 
-          <button
-            onClick={() => {
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem(`cg-session-${game.room_code}`)
-              }
-              router.push('/')
-            }}
-            className="w-full py-3.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm border border-white/10 transition-all active:scale-95 shadow-lg"
-          >
-            Kembali ke Beranda
-          </button>
+          {isFinished && (
+            <button
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem(`cg-session-${game.room_code}`)
+                }
+                router.push('/')
+              }}
+              className="w-full py-3.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm border border-white/10 transition-all active:scale-95 shadow-lg"
+            >
+              Kembali ke Beranda
+            </button>
+          )}
         </div>
       </div>
     )
